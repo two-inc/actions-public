@@ -7,10 +7,26 @@ A reusable GitHub Action for automated code reviews using Claude.
 Reference this action in your workflow:
 
 ```yaml
-- name: Run Claude Code Review
-  uses: two-inc/claude-pr-review-action@main
-  with:
-    anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Run Claude Code Review
+        uses: two-inc/claude-pr-review-action@main
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 ## Configuration
