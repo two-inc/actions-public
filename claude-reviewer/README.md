@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
       pull-requests: write
       issues: read
       id-token: write
@@ -46,7 +47,7 @@ Add your `ANTHROPIC_API_KEY` to your repository secrets:
 ## Inputs
 
 - `anthropic_api_key` (required): Your Anthropic API key
-- `track_progress` (optional): Enable visual progress tracking comments (default: true)
+- `track_progress` (optional): Enable visual progress tracking comments (default: false)
 - `use_sticky_comment` (optional): Use sticky comments for consistent feedback (default: true)
 - `prompt` (optional): Custom review prompt (replaces default)
 - `extra_prompt` (optional): Additional instructions appended to base prompt

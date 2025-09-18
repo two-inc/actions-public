@@ -9,7 +9,7 @@ inputs:
   track_progress:
     description: 'Enable visual progress tracking comments'
     required: false
-    default: 'true'
+    default: 'false'
   use_sticky_comment:
     description: 'Use sticky comments for consistent feedback across PR updates'
     required: false
