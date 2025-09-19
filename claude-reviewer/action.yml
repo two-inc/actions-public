@@ -27,6 +27,8 @@ inputs:
       2. **Get diff information**: Use `mcp__github__get_pull_request_diff` to understand the code changes and line numbers
       3. **Add inline comments**: Use `mcp__github__add_comment_to_pending_review` for each specific piece of feedback on particular lines
       4. **Submit the review**: Use `mcp__github__submit_pending_pull_request_review` with event type "COMMENT" (not "REQUEST_CHANGES") to publish all comments as a non-blocking review
+      5. **Read existing review comments**: Use `mcp__github__get_pull_request_review_comments` to retrieve existing review comments to see if they have been addressed or not by recent changes.
+      6. **Mark resolved comments as resolved**: Use `Bash(gh api: *)` to resolve comments using the API if it looks like they have been addressed by newer commits
 
       Focus your review on:
       - Code quality and best practices
@@ -35,7 +37,9 @@ inputs:
       - Maintainability and readability
       - Architecture and design decisions
 
-      Provide specific, actionable feedback. Use inline comments for line-specific issues and include an overall summary when submitting the review. **Important**: Submit as "COMMENT" type so the review doesn't block the PR.
+      Provide specific, actionable feedback. Use inline comments for line-specific issues and include an overall summary when submitting the review.
+      **Important**: Submit as "COMMENT" type so the review doesn't block the PR.
+      **Critical**: Read all previous review comments. If new changes have addressed the previously requested changes, mark the comment as resolved using the API since there is currently no way of doing this using the mcp tooling.
   extra_prompt:
     description: 'Additional instructions to append to the base prompt'
     required: false
@@ -43,7 +47,7 @@ inputs:
   claude_args:
     description: 'Additional Claude CLI arguments'
     required: false
-    default: '--allowedTools "mcp__github__create_pending_pull_request_review,mcp__github__add_comment_to_pending_review,mcp__github__submit_pending_pull_request_review,mcp__github__get_pull_request_diff"'
+    default: '--allowedTools "mcp__github__create_pending_pull_request_review,mcp__github__add_comment_to_pending_review,mcp__github__submit_pending_pull_request_review,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_review_comments,Bash(gh api:*)"'
 
 runs:
   using: 'composite'
