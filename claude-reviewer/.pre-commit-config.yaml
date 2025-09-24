@@ -1,0 +1,28 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+minimum_pre_commit_version: 3.2.0
+default_install_hook_types: [pre-commit, commit-msg, prepare-commit-msg]
+default_stages: [pre-commit]
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: check-ast
+      - id: check-added-large-files
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: pretty-format-json
+        args: ["--autofix", "--indent=\t", "--no-sort-keys"]
+      - id: requirements-txt-fixer
+      - id: trailing-whitespace
+  - repo: https://github.com/two-inc/git-hooks
+    rev: 25.08.04
+    hooks:
+      - id: commit-msg
+        stages: [commit-msg]
+      - id: prepare-commit-msg
+        stages: [prepare-commit-msg]
