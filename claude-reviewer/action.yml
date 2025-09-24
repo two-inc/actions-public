@@ -21,25 +21,57 @@ inputs:
       REPO: ${{ github.repository }}
       PR NUMBER: ${{ github.event.pull_request.number }}
 
-      Please review this PR and provide inline feedback using the GitHub review system. Follow these steps:
+      **STEP 1 - Determine PR Type**:
+      First, use `mcp__github__get_pull_request` to read the PR title, description, and branch names to determine if this is a release PR.
 
-      1. **Start a review**: Use `mcp__github__create_pending_pull_request_review` to begin a pending review
-      2. **Get diff information**: Use `mcp__github__get_pull_request_diff` to understand the code changes and line numbers
-      3. **Add inline comments**: Use `mcp__github__add_comment_to_pending_review` for each specific piece of feedback on particular lines
-      4. **Submit the review**: Use `mcp__github__submit_pending_pull_request_review` with event type "COMMENT" (not "REQUEST_CHANGES") to publish all comments as a non-blocking review
-      5. **Read existing review comments**: Use `mcp__github__get_pull_request_review_comments` to retrieve existing review comments to see if they have been addressed or not by recent changes.
-      6. **Mark resolved comments as resolved**: Use `Bash(gh api: *)` to resolve comments using the API if it looks like they have been addressed by newer commits
+      **Release PR Detection**:
+      If the PR title, branch name, or description contains patterns like "release", "version", "v[0-9]", "bump", "tag", or if it's merging a release branch to main, treat it as a release PR.
 
-      Focus your review on:
-      - Code quality and best practices
-      - Potential bugs or security issues
-      - Performance considerations
-      - Maintainability and readability
-      - Architecture and design decisions
+      **For Release PRs**: Create a release summary instead of a detailed review:
+      1. **MANDATORY - Check for existing summaries**: Use `mcp__github__get_pull_request_comments` to see if a release summary already exists
+      2. **NEVER duplicate summaries**: If a release summary comment already exists, DO NOT create another one
+      3. **Create release summary**: Use `mcp__github__create_pull_request_comment` to post a single comprehensive release summary covering:
+         - Key features and changes
+         - Breaking changes or migrations needed
+         - Notable bug fixes
+         - Dependencies or version updates
+         - Any security improvements
+      4. **Do NOT create a review**: Skip the normal review process entirely
 
-      Provide specific, actionable feedback. Use inline comments for line-specific issues and include an overall summary when submitting the review.
-      **Important**: Submit as "COMMENT" type so the review doesn't block the PR.
-      **Critical**: Read all previous review comments. If new changes have addressed the previously requested changes, mark the comment as resolved using the API since there is currently no way of doing this using the mcp tooling.
+      **For Regular PRs**: Follow normal review process with extreme selectivity:
+      1. **MANDATORY - Read ALL existing comments FIRST**: Use `mcp__github__get_pull_request_review_comments` to retrieve ALL existing review comments from Claude and other reviewers BEFORE starting anything
+      2. **Start a review**: Use `mcp__github__create_pending_pull_request_review` to begin a pending review
+      3. **Get diff information**: Use `mcp__github__get_pull_request_diff` to understand the code changes and line numbers
+      4. **Cross-reference with existing comments**: Before making ANY comment, check if the same issue has already been raised by Claude or any other reviewer in previous comments
+      5. **Add inline comments**: Use `mcp__github__add_comment_to_pending_review` ONLY for critical issues that have NOT been previously mentioned
+      6. **Submit or delete review**:
+         - If you added comments: Use `mcp__github__submit_pending_pull_request_review` with event type "COMMENT" to publish comments
+         - If no comments were added: Use `mcp__github__delete_pending_pull_request_review` to delete the empty pending review
+      7. **Mark resolved comments as resolved**: Use `Bash(gh api: *)` to resolve comments using the API if they have been addressed
+
+      **ONLY comment on these critical issues:**
+      - **Security vulnerabilities** (SQL injection, XSS, authentication bypasses, etc.)
+      - **Critical bugs** that will cause runtime failures, data corruption, or crashes
+      - **Memory leaks** or severe performance bottlenecks
+      - **Breaking API changes** that will break existing functionality
+      - **Data loss risks** or unsafe database operations
+
+      **DO NOT comment on:**
+      - Minor style issues or formatting
+      - Subjective code organisation preferences
+      - Non-critical performance optimisations
+      - Minor refactoring suggestions
+      - Documentation improvements
+      - Variable naming (unless genuinely confusing)
+      - Code that works correctly but could be "better"
+
+      **Rules:**
+      - **NEVER duplicate existing comments**: If Claude or any other reviewer has already mentioned an issue, DO NOT comment on it again
+      - If unsure whether an issue is critical enough, DON'T comment
+      - If unsure whether an issue has already been raised, DON'T comment
+      - Maximum 3 comments per PR unless there are genuine security/critical issues
+      - Each comment must identify a specific, actionable problem that risks system stability, security, or data integrity
+      - If no NEW critical issues found (beyond what's already been commented), delete the pending review instead of submitting an empty one
   extra_prompt:
     description: 'Additional instructions to append to the base prompt'
     required: false
@@ -47,7 +79,7 @@ inputs:
   claude_args:
     description: 'Additional Claude CLI arguments'
     required: false
-    default: '--allowedTools "mcp__github__create_pending_pull_request_review,mcp__github__add_comment_to_pending_review,mcp__github__submit_pending_pull_request_review,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_review_comments,Bash(gh api:*)"'
+    default: '--allowedTools "mcp__github__get_pull_request,mcp__github__get_pull_request_comments,mcp__github__create_pull_request_comment,mcp__github__create_pending_pull_request_review,mcp__github__add_comment_to_pending_review,mcp__github__submit_pending_pull_request_review,mcp__github__delete_pending_pull_request_review,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_review_comments,Bash(gh api:*)"'
 
 runs:
   using: 'composite'
@@ -65,6 +97,6 @@ runs:
         use_sticky_comment: ${{ inputs.use_sticky_comment }}
         prompt: |
           ${{ inputs.prompt }}
-          
+
           ${{ inputs.extra_prompt }}
         claude_args: ${{ inputs.claude_args }}
