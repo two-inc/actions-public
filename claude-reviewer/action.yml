@@ -28,7 +28,7 @@ inputs:
       If the PR title, branch name, or description contains patterns like "release", "version", "v[0-9]", "bump", "tag", or if it's merging a release branch to main, treat it as a release PR.
 
       **For Release PRs**: Create a release summary instead of a detailed review:
-      1. **MANDATORY - Check for existing summaries**: Use `mcp__github__get_pull_request_comments` to see if a release summary already exists
+      1. **MANDATORY - Check for existing summaries**: Use `Bash(gh api graphql: *)` to query all PR comments and see if a release summary already exists
       2. **NEVER duplicate summaries**: If a release summary comment already exists, DO NOT create another one
       3. **Create release summary**: Use `mcp__github__create_pull_request_comment` to post a single comprehensive release summary covering:
          - Key features and changes
@@ -39,15 +39,15 @@ inputs:
       4. **Do NOT create a review**: Skip the normal review process entirely
 
       **For Regular PRs**: Follow normal review process with extreme selectivity:
-      1. **MANDATORY - Read ALL existing comments FIRST**: Use `mcp__github__get_pull_request_review_comments` to retrieve ALL existing review comments from Claude and other reviewers BEFORE starting anything
-      2. **Start a review**: Use `mcp__github__create_pending_pull_request_review` to begin a pending review
+      1. **MANDATORY - Read ALL existing comments FIRST**: Use `Bash(gh api graphql: *)` to query ALL existing comments and review threads from Claude and other reviewers BEFORE starting anything (supports paging for complete coverage)
+      2. **Start a review**: Use `Bash(gh api graphql: *)` with createPullRequestReview mutation to begin a pending review
       3. **Get diff information**: Use `mcp__github__get_pull_request_diff` to understand the code changes and line numbers
       4. **Cross-reference with existing comments**: Before making ANY comment, check if the same issue has already been raised by Claude or any other reviewer in previous comments
-      5. **Add inline comments**: Use `mcp__github__add_comment_to_pending_review` ONLY for critical issues that have NOT been previously mentioned
+      5. **Add inline comments**: Use `Bash(gh api graphql: *)` with addPullRequestReviewComment mutation ONLY for critical issues that have NOT been previously mentioned
       6. **Submit or delete review**:
-         - If you added comments: Use `mcp__github__submit_pending_pull_request_review` with event type "COMMENT" to publish comments
-         - If no comments were added: Use `mcp__github__delete_pending_pull_request_review` to delete the empty pending review
-      7. **Mark resolved comments as resolved**: Use `Bash(gh api: *)` to resolve comments using the API if they have been addressed
+         - If you added comments: Use `Bash(gh api graphql: *)` with submitPullRequestReview mutation with event type "COMMENT" to publish comments
+         - If no comments were added: Use `Bash(gh api graphql: *)` with deletePullRequestReview mutation to delete the empty pending review
+      7. **Mark resolved comments as resolved**: Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve addressed comments
 
       **ONLY comment on these critical issues:**
       - **Security vulnerabilities** (SQL injection, XSS, authentication bypasses, etc.)
@@ -79,7 +79,7 @@ inputs:
   claude_args:
     description: 'Additional Claude CLI arguments'
     required: false
-    default: '--allowedTools "mcp__github__get_pull_request,mcp__github__get_pull_request_comments,mcp__github__create_pull_request_comment,mcp__github__create_pending_pull_request_review,mcp__github__add_comment_to_pending_review,mcp__github__submit_pending_pull_request_review,mcp__github__delete_pending_pull_request_review,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_review_comments,Bash(gh api:*)"'
+    default: '--allowedTools "mcp__github__get_pull_request,mcp__github__create_pull_request_comment,mcp__github__get_pull_request_diff,Bash(gh api graphql:*)"'
 
 runs:
   using: 'composite'
