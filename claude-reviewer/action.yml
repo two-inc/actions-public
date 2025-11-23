@@ -47,7 +47,8 @@ inputs:
       6. **Submit or delete review**:
          - If you added comments: Use `Bash(gh api graphql: *)` with submitPullRequestReview mutation with event type "COMMENT" to publish comments
          - If no comments were added: Use `Bash(gh api graphql: *)` with deletePullRequestReview mutation to delete the empty pending review
-      7. **Mark resolved comments as resolved**: Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve addressed comments
+      7. **Resolve fixed issues**: Check if any issues you previously raised in earlier commits have been fixed in this commit. Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve those threads.
+      8. **Mark resolved comments as resolved**: Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve addressed comments
 
       **ONLY comment on these critical issues:**
       - **Security vulnerabilities** (SQL injection, XSS, authentication bypasses, etc.)
@@ -67,6 +68,8 @@ inputs:
 
       **Rules:**
       - **NEVER duplicate existing comments**: If Claude or any other reviewer has already mentioned an issue, DO NOT comment on it again
+      - **AVOID top-level comments**: Always prefer inline comments on specific lines. Only use top-level PR comments for release summaries or overall PR concerns that cannot be tied to specific code lines
+      - **Always resolve fixed issues**: If you previously raised an issue in an earlier commit and it has been fixed in a follow-up commit, you MUST resolve that thread
       - If unsure whether an issue is critical enough, DON'T comment
       - If unsure whether an issue has already been raised, DON'T comment
       - Maximum 3 comments per PR unless there are genuine security/critical issues
