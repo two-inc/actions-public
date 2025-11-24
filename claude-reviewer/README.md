@@ -15,7 +15,7 @@ on:
 
 jobs:
   claude-review:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_STANDARD }}
     permissions:
       contents: read
       actions: read
