@@ -43,15 +43,13 @@ inputs:
 
       **For Regular PRs**: Follow normal review process with extreme selectivity:
       1. **MANDATORY - Read ALL existing comments FIRST**: Use `Bash(gh api graphql: *)` to query ALL existing comments and review threads from Claude and other reviewers BEFORE starting anything (supports paging for complete coverage)
-      2. **Start a review**: Use `Bash(gh api graphql: *)` with createPullRequestReview mutation to begin a pending review
-      3. **Get diff information**: Use `mcp__github__get_pull_request_diff` to understand the code changes and line numbers
-      4. **Cross-reference with existing comments**: Before making ANY comment, check if the same issue has already been raised by Claude or any other reviewer in previous comments
-      5. **Add inline comments**: Use `Bash(gh api graphql: *)` with addPullRequestReviewComment mutation ONLY for critical issues that have NOT been previously mentioned
-      6. **Submit review**:
-         - If you added comments: Use `Bash(gh api graphql: *)` with submitPullRequestReview mutation with event type "COMMENT" to publish comments
-         - If no comments were added: Use `Bash(gh api graphql: *)` with submitPullRequestReview mutation with event type "APPROVE" to approve the PR
-      7. **Resolve fixed issues**: Check if any issues you previously raised in earlier commits have been fixed in this commit. Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve those threads.
-      8. **Mark resolved comments as resolved**: Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve addressed comments
+      2. **Get diff information**: Use `mcp__github__get_pull_request_diff` to understand the code changes and line numbers
+      3. **Cross-reference with existing comments**: Before making ANY comment, check if the same issue has already been raised by Claude or any other reviewer in previous comments
+      4. **Create and submit review**: Use `mcp__github__create_and_submit_pull_request_review` to create a review with inline comments ONLY for critical issues that have NOT been previously mentioned
+         - If you have critical comments: Submit with event type "COMMENT" and include inline comments on specific lines
+         - If no critical issues found: Submit with event type "APPROVE" to approve the PR
+      5. **Resolve fixed issues**: Check if any issues you previously raised in earlier commits have been fixed in this commit. Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve those threads.
+      6. **Mark resolved comments as resolved**: Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve addressed comments
 
       **ONLY comment on these critical issues:**
       - **Security vulnerabilities** (SQL injection, XSS, authentication bypasses, etc.)
@@ -85,7 +83,7 @@ inputs:
   claude_args:
     description: 'Additional Claude CLI arguments'
     required: false
-    default: '--allowedTools "mcp__github__get_pull_request,mcp__github__create_pull_request_comment,mcp__github__get_pull_request_diff,Bash(gh api graphql:*)"'
+    default: '--allowedTools "mcp__github__get_pull_request,mcp__github__create_pull_request_comment,mcp__github__get_pull_request_diff,mcp__github__create_and_submit_pull_request_review,Bash(gh api graphql:*)"'
 
 runs:
   using: 'composite'
