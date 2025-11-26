@@ -47,9 +47,9 @@ inputs:
       3. **Get diff information**: Use `mcp__github__get_pull_request_diff` to understand the code changes and line numbers
       4. **Cross-reference with existing comments**: Before making ANY comment, check if the same issue has already been raised by Claude or any other reviewer in previous comments
       5. **Add inline comments**: Use `Bash(gh api graphql: *)` with addPullRequestReviewComment mutation ONLY for critical issues that have NOT been previously mentioned
-      6. **Submit or delete review**:
+      6. **Submit review**:
          - If you added comments: Use `Bash(gh api graphql: *)` with submitPullRequestReview mutation with event type "COMMENT" to publish comments
-         - If no comments were added: Use `Bash(gh api graphql: *)` with deletePullRequestReview mutation to delete the empty pending review
+         - If no comments were added: Use `Bash(gh api graphql: *)` with submitPullRequestReview mutation with event type "APPROVE" to approve the PR
       7. **Resolve fixed issues**: Check if any issues you previously raised in earlier commits have been fixed in this commit. Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve those threads.
       8. **Mark resolved comments as resolved**: Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve addressed comments
 
@@ -77,7 +77,7 @@ inputs:
       - If unsure whether an issue has already been raised, DON'T comment
       - Maximum 3 comments per PR unless there are genuine security/critical issues
       - Each comment must identify a specific, actionable problem that risks system stability, security, or data integrity
-      - If no NEW critical issues found (beyond what's already been commented), delete the pending review instead of submitting an empty one
+      - If no NEW critical issues found (beyond what's already been commented), approve the PR instead of leaving comments
   extra_prompt:
     description: 'Additional instructions to append to the base prompt'
     required: false
