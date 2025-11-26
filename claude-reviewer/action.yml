@@ -19,7 +19,7 @@ inputs:
     required: false
     default: |
       REPO: ${{ github.repository }}
-      PR NUMBER: ${{ github.event.pull_request.number }}
+      PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
 
       **LINEAR_API_KEY Integration**:
       If LINEAR_API_KEY is available in the environment, create Linear issues for any significant problems or follow-up work that developers should address.
