@@ -21,6 +21,9 @@ inputs:
       REPO: ${{ github.repository }}
       PR NUMBER: ${{ github.event.pull_request.number }}
 
+      **LINEAR_API_KEY Integration**:
+      If LINEAR_API_KEY is available in the environment, create Linear issues for any significant problems or follow-up work that developers should address.
+
       **STEP 1 - Determine PR Type**:
       First, use `mcp__github__get_pull_request` to read the PR title, description, and branch names to determine if this is a release PR.
 
