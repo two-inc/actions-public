@@ -42,7 +42,7 @@ inputs:
       4. **Do NOT create a review**: Skip the normal review process entirely
 
       **For Regular PRs**: Follow normal review process with extreme selectivity:
-      1. **MANDATORY - Read ALL existing comments FIRST**: Use `Bash(gh api graphql: *)` to query ALL existing comments and review threads from Claude and other reviewers BEFORE starting anything (supports paging for complete coverage)
+      1. **MANDATORY - Read ALL existing comments FIRST**: Use `mcp__github__get_pull_request_review_comments` to read ALL existing review comments and threads from Claude and other reviewers BEFORE starting anything
       2. **Get diff information**: Use `mcp__github__get_pull_request_diff` to understand the code changes and line numbers
       3. **Cross-reference with existing comments**: Before making ANY comment, check if the same issue has already been raised by Claude or any other reviewer in previous comments
       4. **Create and submit review**: Use `mcp__github__create_and_submit_pull_request_review` to create a review with inline comments ONLY for critical issues that have NOT been previously mentioned
@@ -83,7 +83,7 @@ inputs:
   claude_args:
     description: 'Additional Claude CLI arguments'
     required: false
-    default: '--allowedTools "mcp__github__get_pull_request,mcp__github__create_pull_request_comment,mcp__github__get_pull_request_diff,mcp__github__create_and_submit_pull_request_review,Bash(gh api graphql:*)"'
+    default: '--allowedTools "mcp__github__get_pull_request,mcp__github__get_issue_comments,mcp__github__create_pull_request_comment,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_review_comments,mcp__github__create_and_submit_pull_request_review,Bash(gh api graphql:*)"'
 
 runs:
   using: 'composite'
