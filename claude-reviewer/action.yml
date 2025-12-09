@@ -21,6 +21,17 @@ inputs:
       REPO: ${{ github.repository }}
       PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
 
+      **Tool Reference** (use MCP tools as primary, GraphQL as fallback or where MCP lacks support):
+      - Reading PR details: `mcp__github__get_pull_request`
+      - Reading PR comments: `mcp__github__get_issue_comments`
+      - Reading review comments: `mcp__github__get_pull_request_review_comments`
+      - Reading PR diff: `mcp__github__get_pull_request_diff`
+      - Creating top-level PR comment: `mcp__github__add_issue_comment`
+      - Creating review with inline comments: `mcp__github__create_and_submit_pull_request_review`
+      - **Replying to inline comments**: `Bash(gh api graphql:*)` (MCP does not support this)
+      - **Resolving review threads**: `Bash(gh api graphql:*)` with resolveReviewThread mutation (MCP does not support this)
+      - General fallback for any failed MCP operation: `Bash(gh api graphql:*)`
+
       **LINEAR_API_KEY Integration**:
       If LINEAR_API_KEY is available in the environment, create Linear issues for any significant problems or follow-up work that developers should address.
 
@@ -31,9 +42,9 @@ inputs:
       If the PR title, branch name, or description contains patterns like "release", "version", "v[0-9]", "bump", "tag", or if it's merging a release branch to main, treat it as a release PR.
 
       **For Release PRs**: Create a release summary instead of a detailed review:
-      1. **MANDATORY - Check for existing summaries**: Use `Bash(gh api graphql: *)` to query all PR comments and see if a release summary already exists
+      1. **MANDATORY - Check for existing summaries**: Use `mcp__github__get_issue_comments` to read all PR comments and see if a release summary already exists
       2. **NEVER duplicate summaries**: If a release summary comment already exists, DO NOT create another one
-      3. **Create release summary**: Use `mcp__github__create_pull_request_comment` to post a single comprehensive release summary covering:
+      3. **Create release summary**: Use `mcp__github__add_issue_comment` to post a single comprehensive release summary covering:
          - Key features and changes
          - Breaking changes or migrations needed
          - Notable bug fixes
@@ -48,8 +59,7 @@ inputs:
       4. **Create and submit review**: Use `mcp__github__create_and_submit_pull_request_review` to create a review with inline comments ONLY for critical issues that have NOT been previously mentioned
          - If you have critical comments: Submit with event type "COMMENT" and include inline comments on specific lines
          - If no critical issues found: Submit with event type "APPROVE" to approve the PR
-      5. **Resolve fixed issues**: Check if any issues you previously raised in earlier commits have been fixed in this commit. Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve those threads.
-      6. **Mark resolved comments as resolved**: Use `Bash(gh api graphql: *)` with resolveReviewThread mutation to resolve addressed comments
+      5. **Resolve fixed issues**: If any issues you previously raised have been fixed, use `Bash(gh api graphql:*)` with resolveReviewThread mutation to resolve those threads
 
       **ONLY comment on these critical issues:**
       - **Security vulnerabilities** (SQL injection, XSS, authentication bypasses, etc.)
@@ -83,7 +93,7 @@ inputs:
   claude_args:
     description: 'Additional Claude CLI arguments'
     required: false
-    default: '--allowedTools "mcp__github__get_pull_request,mcp__github__get_issue_comments,mcp__github__create_pull_request_comment,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_review_comments,mcp__github__create_and_submit_pull_request_review,Bash(gh api graphql:*)"'
+    default: '--allowedTools "mcp__github__get_pull_request,mcp__github__get_issue_comments,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_review_comments,mcp__github__create_and_submit_pull_request_review,mcp__github__add_issue_comment,Bash(gh api graphql:*)"'
 
 runs:
   using: 'composite'
