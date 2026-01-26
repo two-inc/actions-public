@@ -5,7 +5,10 @@ author: 'Two Inc'
 inputs:
   anthropic_api_key:
     description: 'Anthropic API key for Claude'
-    required: true
+    required: false
+  claude_code_oauth_token:
+    description: 'Claude Code OAuth token (alternative to anthropic_api_key)'
+    required: false
   track_progress:
     description: 'Enable visual progress tracking comments'
     required: false
@@ -121,6 +124,7 @@ runs:
       uses: anthropics/claude-code-action@v1
       with:
         anthropic_api_key: ${{ inputs.anthropic_api_key }}
+        claude_code_oauth_token: ${{ inputs.claude_code_oauth_token }}
         track_progress: ${{ inputs.track_progress }}
         use_sticky_comment: ${{ inputs.use_sticky_comment }}
         prompt: |

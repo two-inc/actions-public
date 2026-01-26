@@ -32,9 +32,21 @@ jobs:
 
 ## Configuration
 
-Add your `ANTHROPIC_API_KEY` to your repository secrets:
+### Authentication
+
+Choose one authentication method:
+
+**Option 1: API Key (Traditional)**
 1. Go to your repository Settings > Secrets and variables > Actions
 2. Add `ANTHROPIC_API_KEY` with your Anthropic API key
+3. Use in workflow: `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}`
+
+**Option 2: OAuth Token (Recommended for Claude Code users)**
+1. Go to your repository Settings > Secrets and variables > Actions
+2. Add `CLAUDE_CODE_OAUTH_TOKEN` with your Claude Code OAuth token
+3. Use in workflow: `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`
+
+You only need one authentication method.
 
 ## Action Features
 
@@ -46,12 +58,15 @@ Add your `ANTHROPIC_API_KEY` to your repository secrets:
 
 ## Inputs
 
-- `anthropic_api_key` (required): Your Anthropic API key
+- `anthropic_api_key` (optional): Your Anthropic API key
+- `claude_code_oauth_token` (optional): Your Claude Code OAuth token (alternative to API key)
 - `track_progress` (optional): Enable visual progress tracking comments (default: false)
 - `use_sticky_comment` (optional): Use sticky comments for consistent feedback (default: true)
 - `prompt` (optional): Custom review prompt (replaces default)
 - `extra_prompt` (optional): Additional instructions appended to base prompt
 - `claude_args` (optional): Additional Claude CLI arguments
+
+**Note:** Provide either `anthropic_api_key` or `claude_code_oauth_token`, not both.
 
 ## Repository-Specific Configuration
 
@@ -73,4 +88,19 @@ Add repository-specific review instructions:
       - Test coverage for new features
       - SQLAlchemy best practices
       - Alembic migration naming conventions
+```
+
+## Using OAuth Token
+
+For repositories using Claude Code OAuth authentication:
+
+```yaml
+- name: Run Claude Code Review
+  uses: two-inc/claude-pr-review-action@main
+  with:
+    claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    extra_prompt: |
+
+      ## Repository-Specific Guidelines:
+      ...
 ```
