@@ -21,4 +21,8 @@ jobs:
       - name: Run Claude Code Review
         uses: ./
         with:
+          # Option 1: Use API key
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Option 2: Use OAuth token (uncomment to use)
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
