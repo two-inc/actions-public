@@ -36,15 +36,17 @@ jobs:
 
 Choose one authentication method:
 
-**Option 1: API Key (Traditional)**
-1. Go to your repository Settings > Secrets and variables > Actions
-2. Add `ANTHROPIC_API_KEY` with your Anthropic API key
-3. Use in workflow: `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}`
-
-**Option 2: OAuth Token (Recommended for Claude Code users)**
+**Option 1: OAuth Token (Recommended)**
 1. Go to your repository Settings > Secrets and variables > Actions
 2. Add `CLAUDE_CODE_OAUTH_TOKEN` with your Claude Code OAuth token
 3. Use in workflow: `claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}`
+
+OAuth tokens provide better security and can be rotated independently from your API key.
+
+**Option 2: API Key (Legacy)**
+1. Go to your repository Settings > Secrets and variables > Actions
+2. Add `ANTHROPIC_API_KEY` with your Anthropic API key
+3. Use in workflow: `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}`
 
 You only need one authentication method.
 
