@@ -74,6 +74,7 @@ You only need one authentication method.
 | `include_fix_links` | No | `true` | Include "Fix this" links in PR review comments |
 | `include_comments_by_actor` | No | | Comma-separated actor usernames to include in comment context |
 | `exclude_comments_by_actor` | No | | Comma-separated actor usernames to exclude from comment context |
+| `auto_review_events` | No | `opened` | Comma-separated PR event types that trigger auto-review. Empty to disable |
 | `github_app_id` | No | | GitHub App ID for cross-repo access (e.g. private plugin marketplaces) |
 | `github_app_private_key` | No | | GitHub App private key for cross-repo access |
 | `prompt` | No | *(built-in review prompt)* | Custom review prompt (replaces default) |
