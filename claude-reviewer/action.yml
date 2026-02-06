@@ -16,7 +16,28 @@ inputs:
   use_sticky_comment:
     description: 'Use sticky comments for consistent feedback across PR updates'
     required: false
+    default: 'false'
+  settings:
+    description: 'Claude Code settings as JSON string or path to settings JSON file'
+    required: false
+  plugins:
+    description: 'Newline-separated list of Claude Code plugin names to install'
+    required: false
+    default: 'two-database'
+  plugin_marketplaces:
+    description: 'Newline-separated list of Claude Code plugin marketplace Git URLs'
+    required: false
+    default: 'https://github.com/two-inc/claude-plugins.git'
+  include_fix_links:
+    description: 'Include Fix this links in PR code review feedback'
+    required: false
     default: 'true'
+  include_comments_by_actor:
+    description: 'Comma-separated list of actor usernames to include in comment context'
+    required: false
+  exclude_comments_by_actor:
+    description: 'Comma-separated list of actor usernames to exclude from comment context'
+    required: false
   prompt:
     description: 'Custom review prompt'
     required: false
@@ -25,15 +46,28 @@ inputs:
       PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
 
       **Tool Reference** (use MCP tools as primary, GraphQL as fallback or where MCP lacks support):
-      - Reading PR details: `mcp__github__get_pull_request`
-      - Reading PR comments: `mcp__github__get_issue_comments`
-      - Reading review comments: `mcp__github__get_pull_request_review_comments`
-      - Reading PR diff: `mcp__github__get_pull_request_diff`
-      - Creating top-level PR comment: `mcp__github__add_issue_comment`
-      - Creating review with inline comments: `mcp__github__create_and_submit_pull_request_review`
-      - **Replying to inline comments**: `Bash(gh api graphql:*)` (MCP does not support this)
-      - **Resolving review threads**: `Bash(gh api graphql:*)` with resolveReviewThread mutation (MCP does not support this)
-      - General fallback for any failed MCP operation: `Bash(gh api graphql:*)`
+
+      Reading:
+      - PR details: `mcp__github__get_pull_request`
+      - PR comments: `mcp__github__get_issue_comments`
+      - Existing review comments: `mcp__github__get_pull_request_review_comments`
+      - PR diff: `mcp__github__get_pull_request_diff`
+
+      Writing (regular PRs - ALWAYS use inline review, NEVER top-level comments):
+      - **PRIMARY**: `mcp__github__create_and_submit_pull_request_review` - submit a review with inline comments on specific lines. Every comment MUST include `path` (file path) and `line` (line number). Keep the review `body` empty or minimal - put ALL feedback in inline comments
+      - Replying to existing inline threads: `Bash(gh api graphql:*)` with addPullRequestReviewThreadReply mutation:
+        ```
+        gh api graphql -f query='mutation { addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: "THREAD_ID", body: "reply text"}) { comment { id } } }'
+        ```
+      - Resolving fixed threads: `Bash(gh api graphql:*)` with resolveReviewThread mutation:
+        ```
+        gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "THREAD_ID"}) { thread { id } } }'
+        ```
+
+      Writing (release PRs ONLY):
+      - `mcp__github__add_issue_comment` - ONLY for release PR summaries. NEVER use this for regular PR reviews
+
+      Fallback for any failed MCP operation: `Bash(gh api graphql:*)`
 
       **LINEAR_API_KEY Integration**:
       If LINEAR_API_KEY is available in the environment, create Linear issues for any significant problems or follow-up work that developers should address.
@@ -42,27 +76,69 @@ inputs:
       First, use `mcp__github__get_pull_request` to read the PR title, description, and branch names to determine if this is a release PR.
 
       **Release PR Detection**:
-      If the PR title, branch name, or description contains patterns like "release", "version", "v[0-9]", "bump", "tag", or if it's merging a release branch to main, treat it as a release PR.
+      A PR is a release PR if ANY of these match:
+      - Branch name starts with `release/` or `releases/`
+      - PR title starts with "Release" or matches pattern "v[0-9]+\.[0-9]+"
+      - PR is merging a release branch (release/*, releases/*) into main/master
+      Do NOT treat as a release PR just because the word "version", "bump", or "tag" appears somewhere in the title or description - these often appear in regular PRs (e.g. "bump lodash version").
 
       **For Release PRs**: Create a release summary instead of a detailed review:
       1. **MANDATORY - Check for existing summaries**: Use `mcp__github__get_issue_comments` to read all PR comments and see if a release summary already exists
       2. **NEVER duplicate summaries**: If a release summary comment already exists, DO NOT create another one
-      3. **Create release summary**: Use `mcp__github__add_issue_comment` to post a single comprehensive release summary covering:
-         - Key features and changes
-         - Breaking changes or migrations needed
-         - Notable bug fixes
-         - Dependencies or version updates
-         - Any security improvements
-      4. **Do NOT create a review**: Skip the normal review process entirely
+      3. **Read all commits**: Use the diff and commit history to understand every change included in the release
+      4. **Create release summary**: Use `mcp__github__add_issue_comment` to post a summary using EXACTLY this format:
+
+      ```
+      ## Release Summary
+
+      ### Breaking Changes
+      - Description of breaking change with migration steps (#PR)
+
+      ### Features
+      - Description of new feature (#PR)
+
+      ### Fixes
+      - Description of bug fix (#PR)
+
+      ### Improvements
+      - Description of improvement (#PR)
+
+      ### Dependencies
+      - Upgraded/added/removed dependency X from vA to vB (#PR)
+
+      ### Database Migrations
+      - Description of schema change (#PR)
+      ```
+
+      Rules for the release summary:
+      - Only include sections that have entries - omit empty sections entirely
+      - Every item MUST link to the relevant PR number as `(#123)`
+      - Breaking Changes section always comes first if present
+      - Database Migrations section must be included whenever Alembic migrations are part of the release
+      - Keep descriptions concise - one line per change
+      - Group related changes into a single bullet rather than listing each commit separately
+
+      5. **Do NOT create a review**: Skip the normal review process entirely
 
       **For Regular PRs**: Follow normal review process with extreme selectivity:
-      1. **MANDATORY - Read ALL existing comments FIRST**: Use `mcp__github__get_pull_request_review_comments` to read ALL existing review comments and threads from Claude and other reviewers BEFORE starting anything
-      2. **Get diff information**: Use `mcp__github__get_pull_request_diff` to understand the code changes and line numbers
-      3. **Cross-reference with existing comments**: Before making ANY comment, check if the same issue has already been raised by Claude or any other reviewer in previous comments
-      4. **Create and submit review**: Use `mcp__github__create_and_submit_pull_request_review` to create a review with inline comments ONLY for critical issues that have NOT been previously mentioned
-         - If you have critical comments: Submit with event type "COMMENT" and include inline comments on specific lines
-         - If no critical issues found: Submit with event type "APPROVE" to approve the PR
-      5. **Resolve fixed issues**: If any issues you previously raised have been fixed, use `Bash(gh api graphql:*)` with resolveReviewThread mutation to resolve those threads
+      1. **MANDATORY - Read ALL existing reviews and comments FIRST**: Use `mcp__github__get_pull_request_review_comments` AND `mcp__github__get_issue_comments` to read ALL existing review comments, threads, and reviews from Claude and other reviewers BEFORE starting anything. Determine:
+         - Has Claude already approved this PR? If so, note this
+         - Has Claude previously requested changes? If so, note the specific concerns raised
+         - What issues have already been flagged by any reviewer?
+      2. **Check if action is needed**: Based on step 1, decide whether to proceed:
+         - If Claude already APPROVED and no significant new commits have been pushed since that approval, **do nothing** - exit without posting
+         - If Claude already APPROVED and new commits have been pushed, review ONLY the new changes
+         - If Claude previously REQUESTED CHANGES, check if all flagged concerns have been addressed in new commits
+         "Significant new commits" means commits that change application code, migrations, API contracts, or configuration. Commits that ONLY change docs, comments, formatting, or CI config are NOT significant enough to warrant re-review
+      3. **Get diff information**: Use `mcp__github__get_pull_request_diff` to understand the code changes and line numbers
+      4. **Resolve fixed issues**: If any issues Claude previously raised have been fixed, use `Bash(gh api graphql:*)` with resolveReviewThread mutation to resolve those threads
+      5. **Create and submit review**: Use `mcp__github__create_and_submit_pull_request_review`:
+         - Every comment MUST specify `path` (file) and `line` (line number from the diff) to appear inline on the code
+         - If you have NEW critical comments: Submit with event type "COMMENT" and include inline comments. Leave the review `body` empty - all feedback goes in inline comments
+         - If Claude previously requested changes and ALL concerns are now addressed: Submit with event type "APPROVE"
+         - If this is a first review and no critical issues found: Submit with event type "APPROVE"
+         - **NEVER approve if you have any unresolved concerns** - only approve when you are confident there are zero critical issues in the entire PR
+         - **NEVER approve a PR that Claude has already approved** - submitting duplicate approvals adds noise
 
       **ONLY comment on these critical issues:**
       - **Security vulnerabilities** (SQL injection, XSS, authentication bypasses, etc.)
@@ -70,6 +146,15 @@ inputs:
       - **Memory leaks** or severe performance bottlenecks
       - **Breaking API changes** that will break existing functionality
       - **Data loss risks** or unsafe database operations
+      - **Unsafe database migrations** (missing lock timeouts, non-concurrent index creation, backwards-incompatible schema changes, missing NOT VALID on FK constraints, FOR UPDATE SKIP LOCKED)
+
+      **Database Migration Review (Alembic/PostgreSQL)**:
+      If the PR contains Alembic migration files (typically under `alembic/versions/` or `migrations/versions/`), use the `two-database` plugin's `alembic-postgres-migration-helper` skill and validation script to review them.
+      NOTE: The validation script requires the migration file to exist on disk. The consuming workflow must have run `actions/checkout@v4` before this action.
+      1. Read the migration file contents from the diff
+      2. Run the validation script against each migration file: `Bash(python ${CLAUDE_PLUGIN_ROOT}/two-database/scripts/validate_migration.py <migration_file>)`
+      3. Check for: missing lock timeouts on batch updates, non-concurrent index creation, backwards-incompatible changes (column drops/renames without expand-migrate-contract), missing NOT VALID on foreign key constraints, use of FOR UPDATE SKIP LOCKED
+      4. Flag any violations as critical inline comments on the specific migration lines
 
       **DO NOT comment on:**
       - Minor style issues or formatting
@@ -81,14 +166,18 @@ inputs:
       - Code that works correctly but could be "better"
 
       **Rules:**
+      - **ALL feedback MUST be inline comments**: Every comment must be attached to a specific file and line number via `mcp__github__create_and_submit_pull_request_review`. NEVER use `mcp__github__add_issue_comment` for regular PR reviews. If you cannot tie feedback to a specific line, do not post it
       - **NEVER duplicate existing comments**: If Claude or any other reviewer has already mentioned an issue, DO NOT comment on it again
-      - **AVOID top-level comments**: Always prefer inline comments on specific lines. Only use top-level PR comments for release summaries or overall PR concerns that cannot be tied to specific code lines
       - **Always resolve fixed issues**: If you previously raised an issue in an earlier commit and it has been fixed in a follow-up commit, you MUST resolve that thread
+      - **Reply inline to existing threads**: When responding to an existing review conversation, use the GraphQL addPullRequestReviewThreadReply mutation to reply in-thread, not a new top-level comment
+      - **Do nothing if nothing changed**: If Claude already approved and no significant new commits exist, exit without posting anything
+      - **Never approve twice**: If Claude already approved, do not submit another approval
+      - **Approve after fixes**: If Claude previously requested changes and the author has addressed all concerns, resolve the threads and approve
+      - **Only approve with high confidence**: Only approve when you have reviewed the entire diff and are confident there are zero critical issues. If you are uncertain about any part of the code, submit with event type "COMMENT" instead of "APPROVE"
       - If unsure whether an issue is critical enough, DON'T comment
       - If unsure whether an issue has already been raised, DON'T comment
-      - Maximum 3 comments per PR unless there are genuine security/critical issues
+      - Maximum 3 inline comments per PR unless there are genuine security/critical issues
       - Each comment must identify a specific, actionable problem that risks system stability, security, or data integrity
-      - If no NEW critical issues found (beyond what's already been commented), approve the PR instead of leaving comments
   extra_prompt:
     description: 'Additional instructions to append to the base prompt'
     required: false
@@ -96,16 +185,22 @@ inputs:
   claude_args:
     description: 'Additional Claude CLI arguments'
     required: false
-    default: '--allowedTools "mcp__github__get_pull_request,mcp__github__get_issue_comments,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_review_comments,mcp__github__create_and_submit_pull_request_review,mcp__github__add_issue_comment,Bash(gh api graphql:*)"'
+    default: '--max-turns 10 --allowedTools "mcp__github__get_pull_request,mcp__github__get_issue_comments,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_review_comments,mcp__github__create_and_submit_pull_request_review,mcp__github__add_issue_comment,Bash(gh api graphql:*),Bash(python *validate_migration*)"'
+
+outputs:
+  session_id:
+    description: 'Claude Code session ID for resuming conversation'
+    value: ${{ steps.claude-review.outputs.session_id }}
+  structured_output:
+    description: 'Structured JSON output from Claude'
+    value: ${{ steps.claude-review.outputs.structured_output }}
+  execution_file:
+    description: 'Path to execution output file'
+    value: ${{ steps.claude-review.outputs.execution_file }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 1
-
     - name: Setup GitHub CLI
       shell: bash
       run: |
@@ -121,12 +216,19 @@ runs:
         gh --version
 
     - name: Run Claude Code Review
+      id: claude-review
       uses: anthropics/claude-code-action@v1
       with:
         anthropic_api_key: ${{ inputs.anthropic_api_key }}
         claude_code_oauth_token: ${{ inputs.claude_code_oauth_token }}
         track_progress: ${{ inputs.track_progress }}
         use_sticky_comment: ${{ inputs.use_sticky_comment }}
+        settings: ${{ inputs.settings }}
+        plugins: ${{ inputs.plugins }}
+        plugin_marketplaces: ${{ inputs.plugin_marketplaces }}
+        include_fix_links: ${{ inputs.include_fix_links }}
+        include_comments_by_actor: ${{ inputs.include_comments_by_actor }}
+        exclude_comments_by_actor: ${{ inputs.exclude_comments_by_actor }}
         prompt: |
           ${{ inputs.prompt }}
 

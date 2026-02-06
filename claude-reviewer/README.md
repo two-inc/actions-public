@@ -24,6 +24,7 @@ jobs:
       id-token: write
 
     steps:
+      - uses: actions/checkout@v4
       - name: Run Claude Code Review
         uses: two-inc/claude-pr-review-action@main
         with:
@@ -55,34 +56,52 @@ You only need one authentication method.
 - Triggers on PR events: opened, synchronize, ready_for_review, reopened
 - Uses inline commenting for specific feedback
 - Non-blocking reviews (doesn't prevent merging)
-- Sticky comments for consistent feedback across PR updates
 - Progress tracking with visual indicators
+- Cost control via `--max-turns` (default: 10)
+- "Fix this" links in review comments for one-click fixes
 
 ## Inputs
 
-- `anthropic_api_key` (optional): Your Anthropic API key
-- `claude_code_oauth_token` (optional): Your Claude Code OAuth token (alternative to API key)
-- `track_progress` (optional): Enable visual progress tracking comments (default: false)
-- `use_sticky_comment` (optional): Use sticky comments for consistent feedback (default: true)
-- `prompt` (optional): Custom review prompt (replaces default)
-- `extra_prompt` (optional): Additional instructions appended to base prompt
-- `claude_args` (optional): Additional Claude CLI arguments
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `anthropic_api_key` | No | | Anthropic API key |
+| `claude_code_oauth_token` | No | | Claude Code OAuth token (alternative to API key) |
+| `track_progress` | No | `false` | Enable visual progress tracking comments |
+| `use_sticky_comment` | No | `false` | Use sticky comments for consistent feedback |
+| `settings` | No | | Claude Code settings as JSON string or path to settings JSON file |
+| `plugins` | No | | Newline-separated list of Claude Code plugin names to install |
+| `plugin_marketplaces` | No | `https://github.com/two-inc/claude-plugins.git` | Newline-separated list of plugin marketplace Git URLs |
+| `include_fix_links` | No | `true` | Include "Fix this" links in PR review comments |
+| `include_comments_by_actor` | No | | Comma-separated actor usernames to include in comment context |
+| `exclude_comments_by_actor` | No | | Comma-separated actor usernames to exclude from comment context |
+| `prompt` | No | *(built-in review prompt)* | Custom review prompt (replaces default) |
+| `extra_prompt` | No | | Additional instructions appended to base prompt |
+| `claude_args` | No | `--max-turns 10 --allowedTools ...` | Additional Claude CLI arguments |
 
 **Note:** Provide either `anthropic_api_key` or `claude_code_oauth_token`, not both.
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| `session_id` | Claude Code session ID for resuming conversation |
+| `structured_output` | Structured JSON output from Claude |
+| `execution_file` | Path to execution output file |
 
 ## Repository-Specific Configuration
 
 Add repository-specific review instructions:
 
 ```yaml
+- uses: actions/checkout@v4
 - name: Run Claude Code Review
   uses: two-inc/claude-pr-review-action@main
   with:
     anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
     extra_prompt: |
-      
+
       ## Repository-Specific Guidelines:
-      
+
       For this Python API codebase, pay special attention to:
       - Proper error handling and logging patterns
       - Database migration safety
@@ -97,6 +116,7 @@ Add repository-specific review instructions:
 For repositories using Claude Code OAuth authentication:
 
 ```yaml
+- uses: actions/checkout@v4
 - name: Run Claude Code Review
   uses: two-inc/claude-pr-review-action@main
   with:
