@@ -74,6 +74,8 @@ You only need one authentication method.
 | `include_fix_links` | No | `true` | Include "Fix this" links in PR review comments |
 | `include_comments_by_actor` | No | | Comma-separated actor usernames to include in comment context |
 | `exclude_comments_by_actor` | No | | Comma-separated actor usernames to exclude from comment context |
+| `github_app_id` | No | | GitHub App ID for cross-repo access (e.g. private plugin marketplaces) |
+| `github_app_private_key` | No | | GitHub App private key for cross-repo access |
 | `prompt` | No | *(built-in review prompt)* | Custom review prompt (replaces default) |
 | `extra_prompt` | No | | Additional instructions appended to base prompt |
 | `claude_args` | No | `--max-turns 10 --allowedTools ...` | Additional Claude CLI arguments |
