@@ -38,10 +38,6 @@ inputs:
   exclude_comments_by_actor:
     description: 'Comma-separated list of actor usernames to exclude from comment context'
     required: false
-  auto_review_events:
-    description: 'Comma-separated list of pull_request event types that trigger automatic review (e.g. opened,synchronize). Empty string disables auto-review on PR events. Non-PR events like @claude mentions always run regardless'
-    required: false
-    default: 'opened'
   github_app_id:
     description: 'GitHub App ID for generating a token with cross-repo access (e.g. for private plugin marketplaces)'
     required: false
@@ -211,27 +207,9 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Check if review should run
-      id: should-review
-      shell: bash
-      run: |
-        if [[ "${{ github.event_name }}" != "pull_request" ]]; then
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-          echo "Non-PR event, always run"
-        elif [[ -z "${{ inputs.auto_review_events }}" ]]; then
-          echo "skip=true" >> "$GITHUB_OUTPUT"
-          echo "Auto-review disabled (empty auto_review_events)"
-        elif echo ",${{ inputs.auto_review_events }}," | grep -q ",${{ github.event.action }},"; then
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-          echo "PR event '${{ github.event.action }}' matches auto_review_events"
-        else
-          echo "skip=true" >> "$GITHUB_OUTPUT"
-          echo "PR event '${{ github.event.action }}' not in auto_review_events, skipping"
-        fi
-
     - name: Generate GitHub App token
       id: app-token
-      if: ${{ steps.should-review.outputs.skip != 'true' && inputs.github_app_id != '' && inputs.github_app_private_key != '' }}
+      if: ${{ inputs.github_app_id != '' && inputs.github_app_private_key != '' }}
       uses: actions/create-github-app-token@v1
       with:
         app-id: ${{ inputs.github_app_id }}
@@ -239,12 +217,11 @@ runs:
         owner: ${{ github.repository_owner }}
 
     - name: Configure git auth for private marketplace
-      if: ${{ steps.should-review.outputs.skip != 'true' && steps.app-token.outputs.token != '' }}
+      if: ${{ steps.app-token.outputs.token != '' }}
       shell: bash
       run: git config --global url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "https://github.com/"
 
     - name: Setup GitHub CLI
-      if: ${{ steps.should-review.outputs.skip != 'true' }}
       shell: bash
       run: |
         if ! command -v gh &> /dev/null; then
@@ -260,7 +237,6 @@ runs:
 
     - name: Run Claude Code Review
       id: claude-review
-      if: ${{ steps.should-review.outputs.skip != 'true' }}
       uses: anthropics/claude-code-action@v1
       with:
         anthropic_api_key: ${{ inputs.anthropic_api_key }}
