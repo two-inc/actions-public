@@ -70,7 +70,7 @@ You only need one authentication method.
 | `use_sticky_comment` | No | `false` | Use sticky comments for consistent feedback |
 | `settings` | No | | Claude Code settings as JSON string or path to settings JSON file |
 | `plugins` | No | | Newline-separated list of Claude Code plugin names to install |
-| `plugin_marketplaces` | No | `https://github.com/two-inc/claude-plugins.git` | Newline-separated list of plugin marketplace Git URLs |
+| `plugin_marketplaces` | No | `two-inc/claude-plugins` | Newline-separated list of plugin marketplace Git URLs |
 | `include_fix_links` | No | `true` | Include "Fix this" links in PR review comments |
 | `include_comments_by_actor` | No | | Comma-separated actor usernames to include in comment context |
 | `exclude_comments_by_actor` | No | | Comma-separated actor usernames to exclude from comment context |
