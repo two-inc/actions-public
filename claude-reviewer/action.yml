@@ -60,7 +60,7 @@ inputs:
       - PR diff: `mcp__github__get_pull_request_diff`
 
       Writing (regular PRs - ALWAYS use inline review, NEVER top-level comments):
-      - **PRIMARY**: `mcp__github__create_and_submit_pull_request_review` - submit a review with inline comments on specific lines. Every comment MUST include `path` (file path) and `line` (line number). Keep the review `body` empty or minimal - put ALL feedback in inline comments
+      - **PRIMARY**: `mcp__github__create_and_submit_pull_request_review` - submit a review with inline comments on specific lines. Every comment MUST include `path` (file path) and `line` (line number). Keep the review `body` empty or minimal - put ALL feedback in inline comments. When proposing a concrete code fix, use a ` ```suggestion ` block in the comment body so the author can apply it with one click
       - Replying to existing inline threads: `Bash(gh api graphql:*)` with addPullRequestReviewThreadReply mutation:
         ```
         gh api graphql -f query='mutation { addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: "THREAD_ID", body: "reply text"}) { comment { id } } }'
@@ -184,6 +184,7 @@ inputs:
       - If unsure whether an issue has already been raised, DON'T comment
       - Maximum 3 inline comments per PR unless there are genuine security/critical issues
       - Each comment must identify a specific, actionable problem that risks system stability, security, or data integrity
+      - **Use GitHub suggestion blocks for concrete fixes**: When a comment proposes a specific code change (e.g., "use X instead of Y", "add lock timeout", "fix SQL injection by parameterising"), wrap the corrected code in a ` ```suggestion ` block so the author can apply it with one click. For multi-line replacements, set both `start_line` and `line` on the review comment to cover the full range of lines being replaced. Do NOT use suggestion blocks for general warnings or observations that don't have a single concrete fix (e.g., "this endpoint has no authentication")
   extra_prompt:
     description: 'Additional instructions to append to the base prompt'
     required: false

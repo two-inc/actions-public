@@ -57,7 +57,7 @@ if: |
   ...
 ```
 
-Current org-level config: `{"master:opened":true,"main:opened":true,"staging:opened":true}`
+Current org-level config: `{"master:opened":true,"master:synchronize":true,"main:opened":true,"main:synchronize":true,"staging:opened":true}`
 
 Repos using this pattern: `portals`, `checkout-api` (both on staging branch).
 
@@ -130,7 +130,7 @@ When making changes that need to be applied across all consuming repos:
 5. After updating master, check for merge-master-to-staging PRs that may conflict - fix by pushing master's version to staging
 
 Repos using this action (as of Feb 2026):
-helm, admin-portal, gke-helm-deploy-action, risk-engine, communication-service, portals, checkout-page, infra (.yml), repay, e2e-tests (staging only), checkout-api, aries (staging only), njord-bank, argocd, magento-hyva-extension, openapi-action, terraform-action, magento-plugin, release-action, webhooks, platform-tools, bifrost
+claude-code-reviewer (self, uses ./), helm, admin-portal, gke-helm-deploy-action, risk-engine, communication-service, portals, checkout-page, infra (.yml), repay, e2e-tests (staging only), checkout-api, aries (staging only), njord-bank, argocd, magento-hyva-extension, openapi-action, terraform-action, magento-plugin, release-action, webhooks, platform-tools, bifrost
 
 To find all repos: `gh search code "claude-code-reviewer" --owner two-inc --json repository,path`
 
