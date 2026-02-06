@@ -27,7 +27,7 @@ inputs:
   plugin_marketplaces:
     description: 'Newline-separated list of Claude Code plugin marketplace Git URLs'
     required: false
-    default: 'two-inc/claude-plugins'
+    default: 'https://github.com/two-inc/claude-plugins.git'
   include_fix_links:
     description: 'Include Fix this links in PR code review feedback'
     required: false
