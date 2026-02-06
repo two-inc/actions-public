@@ -8,27 +8,43 @@ Reference this action in your workflow:
 
 ```yaml
 name: Claude Code Review
-
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  actions: read
+  issues: write
+  id-token: write
+  pull-requests: write
 
 jobs:
-  claude-review:
+  code-review:
     runs-on: ${{ vars.RUNNER_STANDARD }}
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: write
-      issues: read
-      id-token: write
-
+    if: |
+      (
+        github.event_name == 'pull_request' &&
+        vars.CLAUDE_REVIEW_CONFIG != '' &&
+        fromJSON(vars.CLAUDE_REVIEW_CONFIG)[format('{0}:{1}', github.base_ref, github.event.action)] == true
+      ) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
     steps:
-      - uses: actions/checkout@v4
-      - name: Run Claude Code Review
-        uses: two-inc/claude-pr-review-action@main
+      - uses: two-inc/claude-code-reviewer@main
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_app_id: ${{ vars.TWO_INC_APP_ID }}
+          github_app_private_key: ${{ secrets.TWO_INC_APP_PRIVATE_KEY }}
 ```
 
 ## Configuration
@@ -51,14 +67,29 @@ OAuth tokens provide better security and can be rotated independently from your 
 
 You only need one authentication method.
 
+## Controlling When Reviews Run
+
+Auto-reviews are controlled by the `CLAUDE_REVIEW_CONFIG` organisation/repository variable. This is a JSON object mapping `branch:event` pairs to booleans:
+
+```json
+{"master:opened": true, "main:opened": true, "staging:opened": true}
+```
+
+This means Claude will only auto-review PRs when they are opened against `master`, `main`, or `staging`. Other events (like `synchronize`) and other branches are ignored.
+
+Set this at the org level under Settings > Secrets and variables > Actions > Variables, or per-repo.
+
+If `CLAUDE_REVIEW_CONFIG` is empty or unset, auto-reviews are disabled entirely. Users can still trigger reviews manually by mentioning `@claude` in a PR comment.
+
 ## Action Features
 
-- Triggers on PR events: opened, synchronize, ready_for_review, reopened
+- Configurable per-branch auto-review triggers via `CLAUDE_REVIEW_CONFIG`
 - Uses inline commenting for specific feedback
 - Non-blocking reviews (doesn't prevent merging)
-- Progress tracking with visual indicators
 - Cost control via `--max-turns` (default: 10)
 - "Fix this" links in review comments for one-click fixes
+- Release PR detection with standardised summary format
+- Database migration review via `two-database` plugin
 
 ## Inputs
 
@@ -92,39 +123,25 @@ You only need one authentication method.
 
 ## Repository-Specific Configuration
 
-Add repository-specific review instructions:
+Add repository-specific review instructions via `extra_prompt`:
 
 ```yaml
-- uses: actions/checkout@v4
-- name: Run Claude Code Review
-  uses: two-inc/claude-pr-review-action@main
-  with:
-    anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-    extra_prompt: |
+      - uses: two-inc/claude-code-reviewer@main
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_app_id: ${{ vars.TWO_INC_APP_ID }}
+          github_app_private_key: ${{ secrets.TWO_INC_APP_PRIVATE_KEY }}
+          extra_prompt: |
 
-      ## Repository-Specific Guidelines:
+              ## Repository-Specific Guidelines:
 
-      For this Python API codebase, pay special attention to:
-      - Proper error handling and logging patterns
-      - Database migration safety
-      - API endpoint security and input validation
-      - Test coverage for new features
-      - SQLAlchemy best practices
-      - Alembic migration naming conventions
-```
-
-## Using OAuth Token
-
-For repositories using Claude Code OAuth authentication:
-
-```yaml
-- uses: actions/checkout@v4
-- name: Run Claude Code Review
-  uses: two-inc/claude-pr-review-action@main
-  with:
-    claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-    extra_prompt: |
-
-      ## Repository-Specific Guidelines:
-      ...
+              For this Python API codebase, pay special attention to:
+              - Proper error handling and logging patterns
+              - Database migration safety
+              - API endpoint security and input validation
+              - Test coverage for new features
+              - SQLAlchemy best practices
+              - Alembic migration naming conventions
 ```
