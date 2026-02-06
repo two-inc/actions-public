@@ -75,7 +75,7 @@ Auto-reviews are controlled by the `CLAUDE_REVIEW_CONFIG` organisation/repositor
 {"master:opened": true, "master:synchronize": true, "main:opened": true, "main:synchronize": true, "staging:opened": true}
 ```
 
-This means Claude will only auto-review PRs when they are opened against `master`, `main`, or `staging`. Other events (like `synchronize`) and other branches are ignored.
+This means Claude will auto-review PRs when they are opened or updated (synchronize) against `master` or `main`, and when opened against `staging`. Other branches are ignored.
 
 Set this at the org level under Settings > Secrets and variables > Actions > Variables, or per-repo.
 
