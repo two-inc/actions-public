@@ -38,6 +38,10 @@ inputs:
   exclude_comments_by_actor:
     description: 'Comma-separated list of actor usernames to exclude from comment context'
     required: false
+  allowed_bots:
+    description: 'Comma-separated list of bot usernames allowed to trigger reviews (use * for all bots)'
+    required: false
+    default: 'dependabot'
   github_app_id:
     description: 'GitHub App ID for generating a token with cross-repo access (e.g. for private plugin marketplaces)'
     required: false
@@ -250,6 +254,7 @@ runs:
         include_fix_links: ${{ inputs.include_fix_links }}
         include_comments_by_actor: ${{ inputs.include_comments_by_actor }}
         exclude_comments_by_actor: ${{ inputs.exclude_comments_by_actor }}
+        allowed_bots: ${{ inputs.allowed_bots }}
         prompt: |
           ${{ inputs.prompt }}
 
