@@ -192,7 +192,7 @@ inputs:
   claude_args:
     description: 'Additional Claude CLI arguments'
     required: false
-    default: '--max-turns 10 --allowedTools "mcp__github__get_pull_request,mcp__github__get_issue_comments,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_review_comments,mcp__github__create_and_submit_pull_request_review,mcp__github__add_issue_comment,Bash(gh api graphql:*),Bash(python *validate_migration*)"'
+    default: '--max-turns 10 --allowedTools "mcp__github__get_pull_request,mcp__github__get_pull_request_reviews,mcp__github__get_issue_comments,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_review_comments,mcp__github__create_and_submit_pull_request_review,mcp__github__add_issue_comment,Bash(gh api graphql:*),Bash(python *validate_migration*)"'
 
 outputs:
   session_id:
