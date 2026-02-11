@@ -109,7 +109,7 @@ If `CLAUDE_REVIEW_CONFIG` is empty or unset, auto-reviews are disabled entirely.
 | `github_app_private_key` | No | | GitHub App private key for cross-repo access |
 | `prompt` | No | *(built-in review prompt)* | Custom review prompt (replaces default) |
 | `extra_prompt` | No | | Additional instructions appended to base prompt |
-| `claude_args` | No | `--max-turns 10 --allowedTools ...` | Additional Claude CLI arguments |
+| `claude_args` | No | `--max-turns 15 --allowedTools ...` | Additional Claude CLI arguments |
 
 **Note:** Provide either `anthropic_api_key` or `claude_code_oauth_token`, not both.
 
