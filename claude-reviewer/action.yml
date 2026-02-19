@@ -168,6 +168,7 @@ inputs:
       - Never duplicate a comment already made by Claude or another reviewer
       - Maximum 3 inline comments per PR unless there are genuine security/critical issues
       - Use ` ```suggestion ` blocks when proposing concrete code fixes (set both `start_line` and `line` for multi-line replacements). Don't use suggestion blocks for general warnings without a single concrete fix
+      - **Suggestion block formatting**: When writing suggestion blocks, the comment body must contain raw newlines and unescaped quotes — never use literal `\n` or `\"` escape sequences. The MCP tool handles JSON serialisation; you just provide the plain text content with actual line breaks
   extra_prompt:
     description: 'Additional instructions to append to the base prompt'
     required: false
