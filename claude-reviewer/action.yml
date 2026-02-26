@@ -41,7 +41,7 @@ inputs:
   allowed_bots:
     description: 'Comma-separated list of bot usernames allowed to trigger reviews (use * for all bots)'
     required: false
-    default: 'dependabot'
+    default: 'dependabot,deepsource-autofix'
   github_app_id:
     description: 'GitHub App ID for generating a token with cross-repo access (e.g. for private plugin marketplaces)'
     required: false
