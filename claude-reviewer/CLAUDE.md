@@ -14,7 +14,7 @@ Single-file action (`action.yml`) - no build step, no JS/TS. Thin passthrough to
 
 ### Key design decisions
 
-- **No checkout step** - consuming workflows handle `actions/checkout@v4` themselves
+- **Includes checkout step** - the composite action runs `actions/checkout@v4` itself so consuming workflows don't need to. Required because the upstream `claude-code-action` expects a git repo to exist (for `restoreConfigFromBase` security hardening)
 - **Pins to `@v1`** - gets semver-compatible upstream patches automatically
 - **Selective commenting** - prompt is heavily tuned to only flag critical issues (security, bugs, data loss, unsafe migrations). Maximum 3 comments per PR unless genuine security issues
 - **Release PR detection** - auto-detects release PRs and creates summaries instead of reviews

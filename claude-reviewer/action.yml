@@ -192,6 +192,11 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
     - name: Generate GitHub App token
       id: app-token
       if: ${{ inputs.github_app_id != '' && inputs.github_app_private_key != '' }}
