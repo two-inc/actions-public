@@ -311,6 +311,7 @@ runs:
         include_comments_by_actor: ${{ inputs.include_comments_by_actor }}
         exclude_comments_by_actor: ${{ inputs.exclude_comments_by_actor }}
         allowed_bots: ${{ inputs.allowed_bots }}
+        show_full_output: true
         prompt: |
           ${{ inputs.prompt }}
 
