@@ -86,7 +86,7 @@ If `CLAUDE_REVIEW_CONFIG` is empty or unset, auto-reviews are disabled entirely.
 - Configurable per-branch auto-review triggers via `CLAUDE_REVIEW_CONFIG`
 - Uses inline commenting for specific feedback
 - Non-blocking reviews (doesn't prevent merging)
-- Cost control via `--max-turns` (default: 10)
+- Cost control via `--max-turns` (default: 20)
 - "Fix this" links in review comments for one-click fixes
 - Release PR detection with standardised summary format
 - Database migration review via `two-database` plugin

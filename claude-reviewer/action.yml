@@ -55,13 +55,18 @@ inputs:
       REPO: ${{ github.repository }}
       PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
 
-      **Tool Reference** (use MCP tools as primary, GraphQL as fallback or where MCP lacks support):
+      **CRITICAL - Minimise tool calls. All PR context has been pre-fetched to local files. Do NOT use MCP read tools (get_pull_request, get_issue_comments, get_pull_request_review_comments, get_pull_request_diff) — read the local files instead.**
 
-      Reading:
-      - PR details: `mcp__github__get_pull_request`
-      - PR comments: `mcp__github__get_issue_comments`
-      - Existing review comments: `mcp__github__get_pull_request_review_comments`
-      - PR diff: `mcp__github__get_pull_request_diff`
+      **Pre-fetched context (read these with the Read tool):**
+      - PR details (JSON): `/tmp/pr-context/pr.json`
+      - Reviews (JSON): `/tmp/pr-context/reviews.json` — top-level review submissions (APPROVED, CHANGES_REQUESTED, COMMENTED) with author and commit_id
+      - Issue comments (JSON): `/tmp/pr-context/issue-comments.json`
+      - Review threads (JSON): `/tmp/pr-context/review-threads.json` — includes thread `id` (use for resolveReviewThread and addPullRequestReviewThreadReply), `isResolved`, `path`, `line`, and nested `comments` with author and body
+      - Diff: `/tmp/pr-context/diff.patch`
+
+      Read ALL five files in parallel in your first turn. Do not read them one at a time.
+
+      **Tool Reference:**
 
       Writing (regular PRs - ALWAYS use inline review, NEVER top-level comments):
       - **PRIMARY**: `mcp__github__create_and_submit_pull_request_review` - submit a review with inline comments on specific lines. Every comment MUST include `path` (file path) and `line` (line number). Keep the review `body` empty or minimal - put ALL feedback in inline comments. When proposing a concrete code fix, use a ` ```suggestion ` block in the comment body so the author can apply it with one click
@@ -82,8 +87,8 @@ inputs:
       **LINEAR_API_KEY Integration**:
       If LINEAR_API_KEY is available in the environment, create Linear issues for any significant problems or follow-up work that developers should address.
 
-      **STEP 1 - Determine PR Type**:
-      First, use `mcp__github__get_pull_request` to read the PR title, description, and branch names to determine if this is a release PR.
+      **STEP 1 - Read pre-fetched context**:
+      Read all five local files in parallel (single turn). Then determine if this is a release PR.
 
       **Release PR Detection**:
       A PR is a release PR if ANY of these match:
@@ -93,10 +98,9 @@ inputs:
       Do NOT treat as a release PR just because the word "version", "bump", or "tag" appears somewhere in the title or description - these often appear in regular PRs (e.g. "bump lodash version").
 
       **For Release PRs**: Create a release summary instead of a detailed review:
-      1. **MANDATORY - Check for existing summaries**: Use `mcp__github__get_issue_comments` to read all PR comments and see if a release summary already exists
-      2. **NEVER duplicate summaries**: If a release summary comment already exists, DO NOT create another one
-      3. **Read all commits**: Use the diff and commit history to understand every change included in the release
-      4. **Create release summary**: Use `mcp__github__add_issue_comment` to post a summary using EXACTLY this format:
+      1. **NEVER duplicate summaries**: If a release summary comment already exists in the issue comments file, DO NOT create another one
+      2. **Read all commits**: Use the diff and commit history to understand every change included in the release
+      3. **Create release summary**: Use `mcp__github__add_issue_comment` to post a summary using EXACTLY this format:
 
       ```
       ## Release Summary
@@ -128,22 +132,20 @@ inputs:
       - Keep descriptions concise - one line per change
       - Group related changes into a single bullet rather than listing each commit separately
 
-      5. **Do NOT create a review**: Skip the normal review process entirely
+      4. **Do NOT create a review**: Skip the normal review process entirely
 
       **For Regular PRs**: Follow normal review process with extreme selectivity:
 
-      1. **Read existing reviews**: Use `mcp__github__get_pull_request_review_comments` AND `mcp__github__get_issue_comments` to read ALL existing comments from Claude and other reviewers. Note what Claude has already reviewed and what issues anyone has flagged.
+      Using the pre-fetched local files (do NOT call MCP read tools):
 
-      2. **Check if action is needed**:
+      1. **Check if action is needed**:
          - If Claude already posted a review and no significant new commits since → exit without posting
          - If significant new commits exist → re-review the full diff (not just new commits — they may interact with earlier changes)
          - "Significant" = changes to application code, migrations, API contracts, or configuration. Doc/comment/formatting/CI-only commits are not significant
 
-      3. **Get diff**: Use `mcp__github__get_pull_request_diff`
+      2. **Resolve fixed issues**: If Claude previously flagged issues that are now fixed, resolve those threads via `resolveReviewThread` mutation. Batch all resolve mutations into a single turn.
 
-      4. **Resolve fixed issues**: If Claude previously flagged issues that are now fixed, resolve those threads via `resolveReviewThread` mutation
-
-      5. **Submit review** via `mcp__github__create_and_submit_pull_request_review`:
+      3. **Submit review** via `mcp__github__create_and_submit_pull_request_review`:
          - **NEVER use event type "APPROVE" or "REQUEST_CHANGES"** — always use "COMMENT". You assist human reviewers; they make the final approval decision
          - If you have critical findings: include inline comments and recommend against merging
          - If all previously flagged issues are addressed: note they're resolved and recommend the PR is ready for human approval
@@ -169,6 +171,7 @@ inputs:
       - Maximum 3 inline comments per PR unless there are genuine security/critical issues
       - Use ` ```suggestion ` blocks when proposing concrete code fixes (set both `start_line` and `line` for multi-line replacements). Don't use suggestion blocks for general warnings without a single concrete fix
       - **Suggestion block formatting**: When writing suggestion blocks, the comment body must contain raw newlines and unescaped quotes — never use literal `\n` or `\"` escape sequences. The MCP tool handles JSON serialisation; you just provide the plain text content with actual line breaks
+      - **Never use MCP read tools** (get_pull_request, get_issue_comments, get_pull_request_review_comments, get_pull_request_diff). All data is in the pre-fetched local files
   extra_prompt:
     description: 'Additional instructions to append to the base prompt'
     required: false
@@ -176,7 +179,7 @@ inputs:
   claude_args:
     description: 'Additional Claude CLI arguments'
     required: false
-    default: '--max-turns 20 --allowedTools "mcp__github__get_pull_request,mcp__github__get_pull_request_reviews,mcp__github__get_issue_comments,mcp__github__get_pull_request_diff,mcp__github__get_pull_request_files,mcp__github__get_pull_request_review_comments,mcp__github__create_and_submit_pull_request_review,mcp__github__add_issue_comment,mcp__github_inline_comment__create_inline_comment,Write,Bash(cat *),Bash(grep *),Bash(gh api graphql:*),Bash(gh api repos/*),Bash(python *validate_migration*)"'
+    default: '--max-turns 20 --allowedTools "Read,mcp__github__create_and_submit_pull_request_review,mcp__github__add_issue_comment,mcp__github_inline_comment__create_inline_comment,Write,Bash(cat *),Bash(grep *),Bash(gh api graphql:*),Bash(gh api repos/*),Bash(python *validate_migration*)"'
 
 outputs:
   session_id:
@@ -224,6 +227,74 @@ runs:
           sudo apt install gh -y
         fi
         gh --version
+
+    - name: Prefetch PR context
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        REPO: ${{ github.repository }}
+      run: |
+        set -euo pipefail
+        mkdir -p /tmp/pr-context
+
+        OWNER="${REPO%%/*}"
+        NAME="${REPO##*/}"
+
+        # Fetch all context in parallel
+        gh api "repos/${REPO}/pulls/${PR_NUMBER}" > /tmp/pr-context/pr.json &
+        pid_pr=$!
+        gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate | jq -s 'add // []' > /tmp/pr-context/reviews.json &
+        pid_reviews=$!
+        gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate | jq -s 'add // []' > /tmp/pr-context/issue-comments.json &
+        pid_comments=$!
+        gh api "repos/${REPO}/pulls/${PR_NUMBER}" -H "Accept: application/vnd.github.v3.diff" > /tmp/pr-context/diff.patch &
+        pid_diff=$!
+
+        # Fetch review threads via GraphQL (includes thread IDs for resolve/reply)
+        gh api graphql --paginate -f query='
+          query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) {
+            repository(owner: $owner, name: $name) {
+              pullRequest(number: $pr) {
+                reviewThreads(first: 100, after: $endCursor) {
+                  pageInfo { hasNextPage endCursor }
+                  nodes {
+                    id
+                    isResolved
+                    isOutdated
+                    path
+                    line
+                    comments(first: 100) {
+                      nodes {
+                        id
+                        body
+                        author { login }
+                        createdAt
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ' -f owner="$OWNER" -f name="$NAME" -F pr="$PR_NUMBER" \
+          | jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[]]' > /tmp/pr-context/review-threads.json &
+        pid_threads=$!
+
+        # Wait for all fetches and fail if any errored
+        failed=0
+        for pid in $pid_pr $pid_reviews $pid_comments $pid_diff $pid_threads; do
+          wait "$pid" || failed=1
+        done
+        if [ "$failed" -eq 1 ]; then
+          echo "::error::One or more prefetch calls failed"
+          exit 1
+        fi
+
+        # Log sizes for debugging
+        for f in pr.json reviews.json issue-comments.json review-threads.json diff.patch; do
+          echo "$f: $(wc -c < /tmp/pr-context/$f) bytes"
+        done
 
     - name: Run Claude Code Review
       id: claude-review
