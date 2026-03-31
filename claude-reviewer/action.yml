@@ -58,12 +58,13 @@ inputs:
       **CRITICAL - Minimise tool calls. All PR context has been pre-fetched to local files. Do NOT use MCP read tools (get_pull_request, get_issue_comments, get_pull_request_review_comments, get_pull_request_diff) — read the local files instead.**
 
       **Pre-fetched context (read these with the Read tool):**
-      - PR details (JSON): `${{ steps.prefetch.outputs.pr_json }}`
-      - Issue comments (JSON): `${{ steps.prefetch.outputs.issue_comments }}`
-      - Review threads (JSON): `${{ steps.prefetch.outputs.review_threads }}` — includes thread `id` (use for resolveReviewThread and addPullRequestReviewThreadReply), `isResolved`, `path`, `line`, and nested `comments` with author and body
-      - Diff: `${{ steps.prefetch.outputs.diff }}`
+      - PR details (JSON): `/tmp/pr-context/pr.json`
+      - Reviews (JSON): `/tmp/pr-context/reviews.json` — top-level review submissions (APPROVED, CHANGES_REQUESTED, COMMENTED) with author and commit_id
+      - Issue comments (JSON): `/tmp/pr-context/issue-comments.json`
+      - Review threads (JSON): `/tmp/pr-context/review-threads.json` — includes thread `id` (use for resolveReviewThread and addPullRequestReviewThreadReply), `isResolved`, `path`, `line`, and nested `comments` with author and body
+      - Diff: `/tmp/pr-context/diff.patch`
 
-      Read ALL four files in parallel in your first turn. Do not read them one at a time.
+      Read ALL five files in parallel in your first turn. Do not read them one at a time.
 
       **Tool Reference:**
 
@@ -87,7 +88,7 @@ inputs:
       If LINEAR_API_KEY is available in the environment, create Linear issues for any significant problems or follow-up work that developers should address.
 
       **STEP 1 - Read pre-fetched context**:
-      Read all four local files in parallel (single turn). Then determine if this is a release PR.
+      Read all five local files in parallel (single turn). Then determine if this is a release PR.
 
       **Release PR Detection**:
       A PR is a release PR if ANY of these match:
@@ -228,13 +229,13 @@ runs:
         gh --version
 
     - name: Prefetch PR context
-      id: prefetch
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
         PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         REPO: ${{ github.repository }}
       run: |
+        set -euo pipefail
         mkdir -p /tmp/pr-context
 
         OWNER="${REPO%%/*}"
@@ -242,15 +243,20 @@ runs:
 
         # Fetch all context in parallel
         gh api "repos/${REPO}/pulls/${PR_NUMBER}" > /tmp/pr-context/pr.json &
-        gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate > /tmp/pr-context/issue-comments.json &
+        pid_pr=$!
+        gh api "repos/${REPO}/pulls/${PR_NUMBER}/reviews" --paginate | jq -s 'add // []' > /tmp/pr-context/reviews.json &
+        pid_reviews=$!
+        gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate | jq -s 'add // []' > /tmp/pr-context/issue-comments.json &
+        pid_comments=$!
         gh api "repos/${REPO}/pulls/${PR_NUMBER}" -H "Accept: application/vnd.github.v3.diff" > /tmp/pr-context/diff.patch &
+        pid_diff=$!
 
         # Fetch review threads via GraphQL (includes thread IDs for resolve/reply)
         gh api graphql --paginate -f query='
-          query($owner: String!, $name: String!, $pr: Int!, $cursor: String) {
+          query($owner: String!, $name: String!, $pr: Int!, $endCursor: String) {
             repository(owner: $owner, name: $name) {
               pullRequest(number: $pr) {
-                reviewThreads(first: 100, after: $cursor) {
+                reviewThreads(first: 100, after: $endCursor) {
                   pageInfo { hasNextPage endCursor }
                   nodes {
                     id
@@ -271,20 +277,24 @@ runs:
               }
             }
           }
-        ' -f owner="$OWNER" -f name="$NAME" -F pr="$PR_NUMBER" > /tmp/pr-context/review-threads.json &
+        ' -f owner="$OWNER" -f name="$NAME" -F pr="$PR_NUMBER" \
+          | jq -s '[.[].data.repository.pullRequest.reviewThreads.nodes[]]' > /tmp/pr-context/review-threads.json &
+        pid_threads=$!
 
-        wait
-
-        echo "pr_json=/tmp/pr-context/pr.json" >> "$GITHUB_OUTPUT"
-        echo "issue_comments=/tmp/pr-context/issue-comments.json" >> "$GITHUB_OUTPUT"
-        echo "review_threads=/tmp/pr-context/review-threads.json" >> "$GITHUB_OUTPUT"
-        echo "diff=/tmp/pr-context/diff.patch" >> "$GITHUB_OUTPUT"
+        # Wait for all fetches and fail if any errored
+        failed=0
+        for pid in $pid_pr $pid_reviews $pid_comments $pid_diff $pid_threads; do
+          wait "$pid" || failed=1
+        done
+        if [ "$failed" -eq 1 ]; then
+          echo "::error::One or more prefetch calls failed"
+          exit 1
+        fi
 
         # Log sizes for debugging
-        echo "PR JSON: $(wc -c < /tmp/pr-context/pr.json) bytes"
-        echo "Issue comments: $(wc -c < /tmp/pr-context/issue-comments.json) bytes"
-        echo "Review threads: $(wc -c < /tmp/pr-context/review-threads.json) bytes"
-        echo "Diff: $(wc -c < /tmp/pr-context/diff.patch) bytes"
+        for f in pr.json reviews.json issue-comments.json review-threads.json diff.patch; do
+          echo "$f: $(wc -c < /tmp/pr-context/$f) bytes"
+        done
 
     - name: Run Claude Code Review
       id: claude-review
