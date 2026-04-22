@@ -6,22 +6,10 @@ inputs:
     description: Python version to install
     required: false
     default: "3.12"
-  uv-group:
-    description: uv dependency group to sync before running pre-commit
-    required: false
-    default: dev
   github-token:
     description: Token used to post the sticky PR comment
     required: false
     default: ${{ github.token }}
-  gcp-service-account:
-    description: GCP service account with Artifact Registry read access
-    required: false
-    default: ${{ vars.GCP_ARTIFACT_REGISTRY_WRITER_SA_NAME }}
-  workload-identity-provider:
-    description: Workload Identity Federation provider (full path)
-    required: false
-    default: ${{ vars.WORKLOAD_IDENTITY_PROVIDER_PREFIX }}/${{ github.event.repository.name }}
 
 runs:
   using: composite
@@ -32,22 +20,11 @@ runs:
 
     - uses: astral-sh/setup-uv@v7
       with:
-        version: latest
+        enable-cache: true
 
     - uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python-version }}
-
-    - name: Authenticate to Google Cloud
-      uses: google-github-actions/auth@v2
-      with:
-        token_format: access_token
-        service_account: ${{ inputs.gcp-service-account }}
-        workload_identity_provider: ${{ inputs.workload-identity-provider }}
-
-    - name: Install dependencies
-      shell: bash
-      run: uv sync --group ${{ inputs.uv-group }}
 
     - name: Run pre-commit
       id: pre-commit
@@ -55,7 +32,7 @@ runs:
       continue-on-error: true
       run: |
         set +e -o pipefail
-        uv run pre-commit run --from-ref origin/${{ github.base_ref }} --to-ref HEAD --show-diff-on-failure | tee pre-commit-output
+        uvx pre-commit run --from-ref origin/${{ github.base_ref }} --to-ref HEAD --show-diff-on-failure | tee pre-commit-output
         exit_code=$?
         set -e +o pipefail
         {
