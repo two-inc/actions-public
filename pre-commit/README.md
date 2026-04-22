@@ -9,7 +9,7 @@ Replaces the `style.yaml` boilerplate currently duplicated across ~20 two-inc re
 Copy this workflow verbatim into `.github/workflows/style.yaml`:
 
 ```yaml
-name: Pre-commit
+name: Style
 
 on:
   pull_request:
