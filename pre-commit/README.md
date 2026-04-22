@@ -34,10 +34,11 @@ jobs:
 
 ## Inputs
 
-| Input            | Default               | Description                           |
-| ---------------- | --------------------- | ------------------------------------- |
-| `python-version` | `3.12`                | Python version to install             |
-| `github-token`   | `${{ github.token }}` | Token used to post the sticky comment |
+| Input                | Default               | Description                                                                                        |
+| -------------------- | --------------------- | -------------------------------------------------------------------------------------------------- |
+| `python-version`     | `3.12`                | Python version to install                                                                          |
+| `pre-commit-version` | _latest_              | Pin a pre-commit version (e.g. `3.8.0`) — useful if a repo's `.pre-commit-config.yaml` uses hooks incompatible with pre-commit 4.x (e.g. `language: python_venv`) |
+| `github-token`       | `${{ github.token }}` | Token used to post the sticky comment                                                              |
 
 ## Behaviour
 
