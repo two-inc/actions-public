@@ -6,10 +6,6 @@ inputs:
     description: Python version to install
     required: false
     default: "3.12"
-  pre-commit-version:
-    description: Pre-commit version specifier (e.g. "3.8.0"). Leave blank to use latest.
-    required: false
-    default: ""
   github-token:
     description: Token used to post the sticky PR comment
     required: false
@@ -34,16 +30,9 @@ runs:
       id: pre-commit
       shell: bash
       continue-on-error: true
-      env:
-        PRE_COMMIT_VERSION: ${{ inputs.pre-commit-version }}
       run: |
-        if [ -n "$PRE_COMMIT_VERSION" ]; then
-          spec="pre-commit==$PRE_COMMIT_VERSION"
-        else
-          spec="pre-commit"
-        fi
         set +e -o pipefail
-        uvx --from "$spec" pre-commit run --from-ref origin/${{ github.base_ref }} --to-ref HEAD --show-diff-on-failure | tee pre-commit-output
+        uvx pre-commit run --from-ref origin/${{ github.base_ref }} --to-ref HEAD --show-diff-on-failure | tee pre-commit-output
         exit_code=$?
         set -e +o pipefail
         {
