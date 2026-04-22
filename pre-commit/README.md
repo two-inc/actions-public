@@ -34,10 +34,11 @@ jobs:
 
 ## Inputs
 
-| Input            | Default               | Description                           |
-| ---------------- | --------------------- | ------------------------------------- |
-| `python-version` | `3.12`                | Python version to install             |
-| `github-token`   | `${{ github.token }}` | Token used to post the sticky comment |
+| Input            | Default               | Description                                                                                                                                                       |
+| ---------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `python-version` | `3.12`                | Python version to install                                                                                                                                         |
+| `github-token`   | `${{ github.token }}` | Token used to post the sticky comment                                                                                                                             |
+| `node-version`   | _unset_               | If set, install Node.js of this version and run `npm ci` before pre-commit. Needed for hybrid Python+Node repos whose hooks import packages from `node_modules`. |
 
 ## Behaviour
 

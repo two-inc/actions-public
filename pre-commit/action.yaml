@@ -10,6 +10,13 @@ inputs:
     description: Token used to post the sticky PR comment
     required: false
     default: ${{ github.token }}
+  node-version:
+    description: |
+      If set, install Node.js of this version and run `npm ci` before pre-commit.
+      Needed for hybrid Python+Node repos where hooks (e.g. prettier v3 + ESM plugins
+      like prettier-plugin-svelte) resolve imports from repo-root node_modules.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -25,6 +32,17 @@ runs:
     - uses: actions/setup-python@v5
       with:
         python-version: ${{ inputs.python-version }}
+
+    - if: inputs.node-version != ''
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: npm
+
+    - if: inputs.node-version != ''
+      name: Install npm dependencies
+      shell: bash
+      run: npm ci
 
     - name: Run pre-commit
       id: pre-commit
