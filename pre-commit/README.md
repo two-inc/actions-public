@@ -47,6 +47,25 @@ jobs:
 - Posts the result as a sticky PR comment identified by the `pre-commit` header marker — the comment is updated in place across pushes instead of deleted and recreated.
 - Exits with pre-commit's exit code so the job reflects pass/fail.
 
+## `PIP_EXTRA_INDEX_URL`
+
+The pre-commit run step exports `PIP_EXTRA_INDEX_URL=https://europe-python.pkg.dev/tillit-api/two-pypi/simple/` so that hooks using `language: python` + `additional_dependencies: ["two-dev-cli"]` (or any other internal package) can install without extra wiring on the caller side. The index is anonymously readable, so it's harmless for repos that don't use internal packages.
+
+If a local hook needs to shell out to a two-inc CLI (e.g. `two lint`), declare it as:
+
+```yaml
+- repo: local
+  hooks:
+    - id: two-lint
+      name: two-lint
+      language: python
+      entry: two lint
+      additional_dependencies: ["two-dev-cli"]
+      pass_filenames: false
+```
+
+Do **not** use `language: system` for these hooks — the action runs pre-commit via `uvx` without syncing the project venv, so system hooks that shell out to project-installed binaries won't find them.
+
 ## Migration notes
 
 Alongside adopting this action, consumer repos should:

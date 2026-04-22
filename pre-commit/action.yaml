@@ -30,6 +30,8 @@ runs:
       id: pre-commit
       shell: bash
       continue-on-error: true
+      env:
+        PIP_EXTRA_INDEX_URL: https://europe-python.pkg.dev/tillit-api/two-pypi/simple/
       run: |
         set +e -o pipefail
         uvx pre-commit run --from-ref origin/${{ github.base_ref }} --to-ref HEAD --show-diff-on-failure | tee pre-commit-output
