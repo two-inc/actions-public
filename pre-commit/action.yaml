@@ -12,9 +12,11 @@ inputs:
     default: ${{ github.token }}
   node-version:
     description: |
-      If set, install Node.js of this version and run `npm ci` before pre-commit.
-      Needed for hybrid Python+Node repos where hooks (e.g. prettier v3 + ESM plugins
-      like prettier-plugin-svelte) resolve imports from repo-root node_modules.
+      If set, install Node.js of this version and install node dependencies (via
+      npm ci / pnpm install / yarn install, auto-detected from the lockfile) before
+      pre-commit. Needed for hybrid Python+Node repos where hooks (e.g. prettier v3
+      + ESM plugins like prettier-plugin-svelte) resolve imports from repo-root
+      node_modules.
     required: false
     default: ""
 
@@ -33,24 +35,53 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
+    - name: Cache pre-commit hook environments
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/pre-commit
+        key: pre-commit-${{ runner.os }}-py${{ inputs.python-version }}-${{ hashFiles('.pre-commit-config.yaml') }}
+        restore-keys: |
+          pre-commit-${{ runner.os }}-py${{ inputs.python-version }}-
+
+    - if: inputs.node-version != ''
+      id: detect-pm
+      shell: bash
+      run: |
+        if [ -f pnpm-lock.yaml ]; then
+          echo "pm=pnpm" >> "$GITHUB_OUTPUT"
+        elif [ -f yarn.lock ]; then
+          echo "pm=yarn" >> "$GITHUB_OUTPUT"
+        else
+          echo "pm=npm" >> "$GITHUB_OUTPUT"
+        fi
+
     - if: inputs.node-version != ''
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
+        cache: ${{ steps.detect-pm.outputs.pm }}
 
     - if: inputs.node-version != ''
       name: Install node dependencies
       shell: bash
       run: |
-        if [ -f pnpm-lock.yaml ]; then
-          corepack enable
-          pnpm install --frozen-lockfile
-        elif [ -f yarn.lock ]; then
-          corepack enable
-          yarn install --frozen-lockfile
-        else
-          npm ci
-        fi
+        case "${{ steps.detect-pm.outputs.pm }}" in
+          pnpm)
+            corepack enable
+            pnpm install --frozen-lockfile
+            ;;
+          yarn)
+            corepack enable
+            if [ -f .yarnrc.yml ]; then
+              yarn install --immutable
+            else
+              yarn install --frozen-lockfile
+            fi
+            ;;
+          npm)
+            npm ci
+            ;;
+        esac
 
     - name: Run pre-commit
       id: pre-commit
