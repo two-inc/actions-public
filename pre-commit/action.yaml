@@ -48,10 +48,8 @@ runs:
       shell: bash
       run: |
         if [ -f pnpm-lock.yaml ]; then
-          corepack enable
           echo "pm=pnpm" >> "$GITHUB_OUTPUT"
         elif [ -f yarn.lock ]; then
-          corepack enable
           echo "pm=yarn" >> "$GITHUB_OUTPUT"
         else
           echo "pm=npm" >> "$GITHUB_OUTPUT"
@@ -61,7 +59,19 @@ runs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
-        cache: ${{ steps.detect-pm.outputs.pm }}
+        # Only let setup-node auto-cache npm — pnpm/yarn require corepack
+        # shims on PATH to resolve cache paths, and corepack only arrives
+        # with setup-node itself (chicken-and-egg on self-hosted runners).
+        cache: ${{ steps.detect-pm.outputs.pm == 'npm' && 'npm' || '' }}
+
+    - if: inputs.node-version != '' && steps.detect-pm.outputs.pm != 'npm'
+      name: Cache node_modules (${{ steps.detect-pm.outputs.pm }})
+      uses: actions/cache@v4
+      with:
+        path: node_modules
+        key: ${{ runner.os }}-${{ steps.detect-pm.outputs.pm }}-node${{ inputs.node-version }}-${{ hashFiles('pnpm-lock.yaml', 'yarn.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-${{ steps.detect-pm.outputs.pm }}-node${{ inputs.node-version }}-
 
     - if: inputs.node-version != ''
       name: Install node dependencies
@@ -69,9 +79,11 @@ runs:
       run: |
         case "${{ steps.detect-pm.outputs.pm }}" in
           pnpm)
+            corepack enable
             pnpm install --frozen-lockfile
             ;;
           yarn)
+            corepack enable
             if [ -f .yarnrc.yml ]; then
               yarn install --immutable
             else
