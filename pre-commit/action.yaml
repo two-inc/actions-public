@@ -48,8 +48,10 @@ runs:
       shell: bash
       run: |
         if [ -f pnpm-lock.yaml ]; then
+          corepack enable
           echo "pm=pnpm" >> "$GITHUB_OUTPUT"
         elif [ -f yarn.lock ]; then
+          corepack enable
           echo "pm=yarn" >> "$GITHUB_OUTPUT"
         else
           echo "pm=npm" >> "$GITHUB_OUTPUT"
@@ -67,11 +69,9 @@ runs:
       run: |
         case "${{ steps.detect-pm.outputs.pm }}" in
           pnpm)
-            corepack enable
             pnpm install --frozen-lockfile
             ;;
           yarn)
-            corepack enable
             if [ -f .yarnrc.yml ]; then
               yarn install --immutable
             else
