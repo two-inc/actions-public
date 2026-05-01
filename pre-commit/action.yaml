@@ -55,23 +55,18 @@ runs:
           echo "pm=npm" >> "$GITHUB_OUTPUT"
         fi
 
+    # setup-node@v5's package-manager-cache (default true) shells out to pnpm/yarn
+    # to resolve the cache dir, so the binary must be on PATH first. corepack
+    # ships with the system node and provides shims, so enable it before setup-node.
+    - if: inputs.node-version != '' && steps.detect-pm.outputs.pm != 'npm'
+      shell: bash
+      run: corepack enable
+
     - if: inputs.node-version != ''
       uses: actions/setup-node@v5
       with:
         node-version: ${{ inputs.node-version }}
-        # Only let setup-node auto-cache npm — pnpm/yarn require corepack
-        # shims on PATH to resolve cache paths, and corepack only arrives
-        # with setup-node itself (chicken-and-egg on self-hosted runners).
-        cache: ${{ steps.detect-pm.outputs.pm == 'npm' && 'npm' || '' }}
-
-    - if: inputs.node-version != '' && steps.detect-pm.outputs.pm != 'npm'
-      name: Cache node_modules (${{ steps.detect-pm.outputs.pm }})
-      uses: actions/cache@v5
-      with:
-        path: node_modules
-        key: ${{ runner.os }}-${{ steps.detect-pm.outputs.pm }}-node${{ inputs.node-version }}-${{ hashFiles('pnpm-lock.yaml', 'yarn.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ steps.detect-pm.outputs.pm }}-node${{ inputs.node-version }}-
+        cache: ${{ steps.detect-pm.outputs.pm }}
 
     - if: inputs.node-version != ''
       name: Install node dependencies
@@ -79,11 +74,9 @@ runs:
       run: |
         case "${{ steps.detect-pm.outputs.pm }}" in
           pnpm)
-            corepack enable
             pnpm install --frozen-lockfile
             ;;
           yarn)
-            corepack enable
             if [ -f .yarnrc.yml ]; then
               yarn install --immutable
             else
