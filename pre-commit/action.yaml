@@ -23,7 +23,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
 
@@ -61,7 +61,7 @@ runs:
     # self-hosted runners that don't pre-install node. So we skip the
     # package-manager-cache for pnpm/yarn and use a manual node_modules cache.
     - if: inputs.node-version != ''
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node-version }}
         # Only auto-cache for npm. pnpm/yarn need their binary on PATH for
@@ -123,7 +123,7 @@ runs:
 
     - name: Render comment
       if: github.event_name == 'pull_request'
-      uses: actions/github-script@v8
+      uses: actions/github-script@v9
       with:
         script: |
           const fs = require('fs');
