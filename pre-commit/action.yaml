@@ -64,7 +64,12 @@ runs:
       uses: actions/setup-node@v5
       with:
         node-version: ${{ inputs.node-version }}
-        cache: ${{ steps.detect-pm.outputs.pm == 'npm' && 'npm' || '' }}
+        # Only auto-cache for npm. pnpm/yarn need their binary on PATH for
+        # setup-node to resolve the cache dir, and corepack ships inside node
+        # itself — we can't reliably enable corepack before setup-node on
+        # self-hosted runners that don't pre-install node. We use a manual
+        # actions/cache@v5 for pnpm/yarn instead.
+        package-manager-cache: ${{ steps.detect-pm.outputs.pm == 'npm' }}
 
     - if: inputs.node-version != '' && steps.detect-pm.outputs.pm != 'npm'
       name: Cache node_modules (${{ steps.detect-pm.outputs.pm }})
