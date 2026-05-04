@@ -120,8 +120,9 @@ runs:
     # source via `${{ steps.pre-commit.outputs.OUTPUT }}`. Inlined templates of
     # unbounded user output are passed to node24 as argv and blow past the
     # Linux ARG_MAX (~128KB) on large diffs, killing the step with E2BIG before
-    # any code runs. Truncating to a safe ceiling keeps the GitHub comment
-    # readable while letting the step run on any PR size.
+    # any code runs. Middle-truncating to a safe ceiling preserves both the
+    # headline failure (start) and the final summary (end), since the dense
+    # middle is the most compressible part.
     - name: Render comment
       if: github.event_name == 'pull_request'
       uses: actions/github-script@v9
@@ -145,10 +146,17 @@ runs:
           } catch (err) {
             output = `(failed to read pre-commit-output: ${err.message})`;
           }
-          let truncated = '';
-          if (Buffer.byteLength(output, 'utf8') > MAX_OUTPUT_BYTES) {
-            output = output.slice(-MAX_OUTPUT_BYTES);
-            truncated = `\n\n_Output truncated to last ${MAX_OUTPUT_BYTES} bytes._`;
+          // Middle-truncate: both the start (which hook failed, headline error)
+          // and the tail (final summary, exit context) are usually load-bearing.
+          // The dense middle (per-file diffs, line-by-line lint chatter) is the
+          // most compressible part.
+          const buf = Buffer.from(output, 'utf8');
+          if (buf.length > MAX_OUTPUT_BYTES) {
+            const half = Math.floor((MAX_OUTPUT_BYTES - 80) / 2);
+            const removed = buf.length - 2 * half;
+            const head = buf.slice(0, half).toString('utf8');
+            const tail = buf.slice(buf.length - half).toString('utf8');
+            output = `${head}\n\n... [truncated ${removed} bytes from the middle] ...\n\n${tail}`;
           }
           const escaped = output.replace(/`/g, '\\`');
           const hint = outcome === 'success' ? '' : `
