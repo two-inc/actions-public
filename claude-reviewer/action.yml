@@ -43,7 +43,10 @@ inputs:
     required: false
     default: 'dependabot,deepsource-autofix'
   github_app_id:
-    description: 'GitHub App ID for generating a token with cross-repo access (e.g. for private plugin marketplaces)'
+    description: 'DEPRECATED: use github_app_client_id instead. Numeric GitHub App ID.'
+    required: false
+  github_app_client_id:
+    description: 'GitHub App client ID (preferred over deprecated github_app_id)'
     required: false
   github_app_private_key:
     description: 'GitHub App private key for generating a token with cross-repo access'
@@ -202,10 +205,11 @@ runs:
 
     - name: Generate GitHub App token
       id: app-token
-      if: ${{ inputs.github_app_id != '' && inputs.github_app_private_key != '' }}
+      if: ${{ (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '' }}
       uses: actions/create-github-app-token@v3
       with:
-        app-id: ${{ inputs.github_app_id }}
+        app-id: ${{ inputs.github_app_client_id == '' && inputs.github_app_id || '' }}
+        client-id: ${{ inputs.github_app_client_id }}
         private-key: ${{ inputs.github_app_private_key }}
         owner: ${{ github.repository_owner }}
 
