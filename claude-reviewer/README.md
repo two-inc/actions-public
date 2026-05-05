@@ -43,7 +43,7 @@ jobs:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_app_id: ${{ vars.TWO_INC_APP_ID }}
+          github_app_client_id: ${{ vars.TWO_INC_APP_CLIENT_ID }}
           github_app_private_key: ${{ secrets.TWO_INC_APP_PRIVATE_KEY }}
 ```
 
@@ -105,7 +105,8 @@ If `CLAUDE_REVIEW_CONFIG` is empty or unset, auto-reviews are disabled entirely.
 | `include_fix_links` | No | `true` | Include "Fix this" links in PR review comments |
 | `include_comments_by_actor` | No | | Comma-separated actor usernames to include in comment context |
 | `exclude_comments_by_actor` | No | | Comma-separated actor usernames to exclude from comment context |
-| `github_app_id` | No | | GitHub App ID for cross-repo access (e.g. private plugin marketplaces) |
+| `github_app_client_id` | No | | GitHub App client ID for cross-repo access (e.g. private plugin marketplaces) |
+| `github_app_id` | No | | DEPRECATED — use `github_app_client_id` instead. Numeric GitHub App ID, kept as a backward-compatible alias. |
 | `github_app_private_key` | No | | GitHub App private key for cross-repo access |
 | `prompt` | No | *(built-in review prompt)* | Custom review prompt (replaces default) |
 | `extra_prompt` | No | | Additional instructions appended to base prompt |
@@ -131,7 +132,7 @@ Add repository-specific review instructions via `extra_prompt`:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_app_id: ${{ vars.TWO_INC_APP_ID }}
+          github_app_client_id: ${{ vars.TWO_INC_APP_CLIENT_ID }}
           github_app_private_key: ${{ secrets.TWO_INC_APP_PRIVATE_KEY }}
           extra_prompt: |
 
