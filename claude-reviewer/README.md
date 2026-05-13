@@ -90,6 +90,7 @@ If `CLAUDE_REVIEW_CONFIG` is empty or unset, auto-reviews are disabled entirely.
 - "Fix this" links in review comments for one-click fixes
 - Release PR detection with standardised summary format
 - Database migration review via `two-database` plugin
+- Triages unresolved review threads from bot reviewers (Claude, `*[bot]`, codex, gemini, deepsource): replies and resolves when the diff addresses them, or replies explaining when verified false positive. Human-authored threads receive a reply only — they are never auto-resolved
 
 ## Inputs
 
