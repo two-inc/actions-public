@@ -146,13 +146,17 @@ inputs:
          - If significant new commits exist → re-review the full diff (not just new commits — they may interact with earlier changes)
          - "Significant" = changes to application code, migrations, API contracts, or configuration. Doc/comment/formatting/CI-only commits are not significant
 
-      2. **Resolve fixed issues**: If Claude previously flagged issues that are now fixed, resolve those threads via `resolveReviewThread` mutation. Batch all resolve mutations into a single turn.
+      2. **Triage unresolved threads — all in a single turn**: Decide the action for every unresolved thread in `review-threads.json` up front, then issue every `addPullRequestReviewThreadReply` and `resolveReviewThread` mutation in one parallel batch. Do not loop one-thread-per-turn.
+         - **Bot-authored threads** (login ends with `[bot]`, or is `chatgpt-codex-connector`, `gemini-code-assist`, `deepsource-io`, or Claude itself): if addressed, reply ("addressed in <commit-sha>") + resolve. If false positive, reply explaining why + resolve.
+         - **Human-authored threads**: if addressed, reply noting resolution in <commit-sha> but do NOT resolve. If you disagree (false positive, missing context, wrong assumption), reply pushing back with reasoning — still don't resolve. Humans resolve their own threads.
+         - If still valid and unaddressed, leave it open with no reply.
 
       3. **Submit review** via `mcp__github__create_and_submit_pull_request_review`:
          - **NEVER use event type "APPROVE" or "REQUEST_CHANGES"** — always use "COMMENT". You assist human reviewers; they make the final approval decision
          - If you have critical findings: include inline comments and recommend against merging
          - If all previously flagged issues are addressed: note they're resolved and recommend the PR is ready for human approval
          - If first review with no critical issues: briefly note no critical issues found
+         - When concluding that the PR is ready, always end with `Ready for human approval ✅` on its own paragraph (preceded by a blank line)
 
       **ONLY flag these critical issues:**
       - Security vulnerabilities (SQL injection, XSS, auth bypasses, etc.)
