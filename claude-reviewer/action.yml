@@ -41,7 +41,7 @@ inputs:
   allowed_bots:
     description: 'Comma-separated list of bot usernames allowed to trigger reviews (use * for all bots)'
     required: false
-    default: 'dependabot,deepsource-autofix'
+    default: 'dependabot,deepsource-autofix,two-inc'
   github_app_id:
     description: 'DEPRECATED: use github_app_client_id instead. Numeric GitHub App ID.'
     required: false
