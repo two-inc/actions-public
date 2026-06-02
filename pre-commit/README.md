@@ -50,7 +50,7 @@ jobs:
 
 ## `PIP_EXTRA_INDEX_URL`
 
-The pre-commit run step exports `PIP_EXTRA_INDEX_URL=https://europe-python.pkg.dev/tillit-api/two-pypi/simple/` so that hooks using `language: python` + `additional_dependencies: ["two-dev-cli"]` (or any other internal package) can install without extra wiring on the caller side. The index is anonymously readable, so it's harmless for repos that don't use internal packages.
+The pre-commit run step exports `PIP_EXTRA_INDEX_URL=https://europe-north1-python.pkg.dev/two-artifacts/pypi-virtual/simple/` so that hooks using `language: python` + `additional_dependencies: ["two-dev-cli"]` (or any other internal package) can install without extra wiring on the caller side. The index is anonymously readable, so it's harmless for repos that don't use internal packages.
 
 If a local hook needs to shell out to a two-inc CLI (e.g. `two lint`), declare it as:
 
