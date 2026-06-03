@@ -35,6 +35,10 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
+    - name: Install action scripts
+      shell: bash
+      run: pip install --quiet "${{ github.action_path }}"
+
     - name: Cache pre-commit hook environments
       uses: actions/cache@v5
       with:
@@ -46,14 +50,7 @@ runs:
     - if: inputs.node-version != ''
       id: detect-pm
       shell: bash
-      run: |
-        if [ -f pnpm-lock.yaml ]; then
-          echo "pm=pnpm" >> "$GITHUB_OUTPUT"
-        elif [ -f yarn.lock ]; then
-          echo "pm=yarn" >> "$GITHUB_OUTPUT"
-        else
-          echo "pm=npm" >> "$GITHUB_OUTPUT"
-        fi
+      run: python -m pre_commit_action.detect_pm >> "$GITHUB_OUTPUT"
 
     # Only let setup-node@v5 auto-cache npm. pnpm/yarn need a corepack shim on
     # PATH before setup-node can resolve their cache dirs, but corepack ships
@@ -83,24 +80,7 @@ runs:
     - if: inputs.node-version != ''
       name: Install node dependencies
       shell: bash
-      run: |
-        case "${{ steps.detect-pm.outputs.pm }}" in
-          pnpm)
-            corepack enable
-            pnpm install --frozen-lockfile
-            ;;
-          yarn)
-            corepack enable
-            if [ -f .yarnrc.yml ]; then
-              yarn install --immutable
-            else
-              yarn install --frozen-lockfile
-            fi
-            ;;
-          npm)
-            npm ci
-            ;;
-        esac
+      run: python -m pre_commit_action.install_node_deps ${{ steps.detect-pm.outputs.pm }}
 
     - name: Run pre-commit
       id: pre-commit
@@ -109,83 +89,18 @@ runs:
       env:
         PIP_EXTRA_INDEX_URL: https://europe-north1-python.pkg.dev/two-artifacts/pypi-virtual/simple/
       run: |
-        set +e -o pipefail
-        uvx pre-commit run --from-ref origin/${{ github.base_ref }} --to-ref HEAD --show-diff-on-failure | tee pre-commit-output
-        exit_code=$?
-        set -e +o pipefail
-        echo "EXIT_CODE=$exit_code" >> "$GITHUB_OUTPUT"
-        exit $exit_code
+        python -m pre_commit_action.run_hooks ${{ github.base_ref }} HEAD pre-commit-output
+        echo "EXIT_CODE=$?" >> "$GITHUB_OUTPUT"
 
-    # Read pre-commit-output from disk rather than splicing it into the script
-    # source via `${{ steps.pre-commit.outputs.OUTPUT }}`. Inlined templates of
-    # unbounded user output are passed to node24 as argv and blow past the
-    # Linux ARG_MAX (~128KB) on large diffs, killing the step with E2BIG before
-    # any code runs. Middle-truncating to a safe ceiling preserves both the
-    # headline failure (start) and the final summary (end), since the dense
-    # middle is the most compressible part.
     - name: Render comment
       if: github.event_name == 'pull_request'
-      uses: actions/github-script@v9
+      shell: bash
       env:
         PRE_COMMIT_EXIT_CODE: ${{ steps.pre-commit.outputs.EXIT_CODE }}
         PRE_COMMIT_OUTCOME: ${{ steps.pre-commit.outcome }}
         PRE_COMMIT_BASE_REF: ${{ github.base_ref }}
         PRE_COMMIT_ACTOR: ${{ github.actor }}
-      with:
-        script: |
-          const fs = require('fs');
-          const MAX_OUTPUT_BYTES = 60 * 1024;
-          const outcome = process.env.PRE_COMMIT_OUTCOME;
-          const exitCode = process.env.PRE_COMMIT_EXIT_CODE;
-          const baseRef = process.env.PRE_COMMIT_BASE_REF;
-          const actor = process.env.PRE_COMMIT_ACTOR;
-          const emoji = outcome === 'success' ? '🏆' : '🚫';
-          let output = '';
-          try {
-            output = fs.readFileSync('pre-commit-output', 'utf8');
-          } catch (err) {
-            output = `(failed to read pre-commit-output: ${err.message})`;
-          }
-          // Middle-truncate: both the start (which hook failed, headline error)
-          // and the tail (final summary, exit context) are usually load-bearing.
-          // The dense middle (per-file diffs, line-by-line lint chatter) is the
-          // most compressible part.
-          const buf = Buffer.from(output, 'utf8');
-          if (buf.length > MAX_OUTPUT_BYTES) {
-            const half = Math.floor((MAX_OUTPUT_BYTES - 80) / 2);
-            const removed = buf.length - 2 * half;
-            const head = buf.slice(0, half).toString('utf8');
-            const tail = buf.slice(buf.length - half).toString('utf8');
-            output = `${head}\n\n... [truncated ${removed} bytes from the middle] ...\n\n${tail}`;
-          }
-          const escaped = output.replace(/`/g, '\\`');
-          const hint = outcome === 'success' ? '' : `
-          Looks like the PR is missing pre-commit changes. Please run the following locally and commit changes to fix this issue:
-
-          \`\`\`
-          pre-commit install  # only if you do not have it installed already
-          git fetch origin
-          pre-commit run --from-ref origin/${baseRef} --to-ref HEAD
-          git commit -a
-          git push
-          \`\`\`
-          `;
-          const body = `# 🖌 Pre-commit ${outcome} ${emoji}
-
-          ${hint}
-
-          <details><summary>Details</summary>
-
-          \`\`\`
-          ${escaped}
-          \`\`\`
-
-          Exit code: ${exitCode}
-
-          </details>
-
-          Author ✍️@${actor}`;
-          fs.writeFileSync('pre-commit-comment.md', body);
+      run: python -m pre_commit_action.render_comment pre-commit-output pre-commit-comment.md
 
     - name: Post sticky PR comment
       if: github.event_name == 'pull_request'
