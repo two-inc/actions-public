@@ -5,7 +5,9 @@ build-backend = "hatchling.build"
 [project]
 name = "pre-commit-action"
 version = "0.1.0"
-requires-python = ">=3.11"
+# The action pip-installs itself with the consumer's python-version input,
+# so this must cover the lowest version consumers pin (3.10 as of 2026-06).
+requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
