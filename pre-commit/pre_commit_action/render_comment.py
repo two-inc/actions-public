@@ -18,7 +18,6 @@ def middle_truncate(text: str, max_bytes: int = MAX_OUTPUT_BYTES) -> str:
 def render_comment(
     output_path: str,
     exit_code: str,
-    outcome: str,
     base_ref: str,
     actor: str,
 ) -> str:
@@ -29,6 +28,9 @@ def render_comment(
         raw = f"(failed to read {output_path}: {err})"
 
     output = middle_truncate(raw)
+    # The step itself always succeeds (exit code is captured with -e disabled),
+    # so the hook status must come from the exit code, not the step outcome.
+    outcome = "success" if exit_code == "0" else "failure"
     emoji = "🏆" if outcome == "success" else "🚫"
 
     hint = (
@@ -66,9 +68,8 @@ if __name__ == "__main__":
     output_path = sys.argv[1]
     comment_path = sys.argv[2] if len(sys.argv) > 2 else "pre-commit-comment.md"
     exit_code = os.environ["PRE_COMMIT_EXIT_CODE"]
-    outcome = os.environ["PRE_COMMIT_OUTCOME"]
     base_ref = os.environ["PRE_COMMIT_BASE_REF"]
     actor = os.environ["PRE_COMMIT_ACTOR"]
-    comment = render_comment(output_path, exit_code, outcome, base_ref, actor)
+    comment = render_comment(output_path, exit_code, base_ref, actor)
     with open(comment_path, "w") as f:
         f.write(comment)
