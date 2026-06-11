@@ -70,6 +70,6 @@ To find all repos: `gh search code "claude-code-reviewer" --owner two-inc --json
 ## Testing changes
 
 1. Push changes to a branch
-2. Point a test workflow at `two-inc/claude-code-reviewer@your-branch`
+2. Point a test workflow at `two-inc/actions/claude-reviewer@your-branch`
 3. Open a test PR and verify the review runs correctly
 4. Check GitHub Actions logs for plugin installation and review output

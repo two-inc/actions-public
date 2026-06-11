@@ -38,7 +38,7 @@ jobs:
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
     steps:
-      - uses: two-inc/claude-code-reviewer@main
+      - uses: two-inc/actions/claude-reviewer@main
         env:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         with:
@@ -128,7 +128,7 @@ If `CLAUDE_REVIEW_CONFIG` is empty or unset, auto-reviews are disabled entirely.
 Add repository-specific review instructions via `extra_prompt`:
 
 ```yaml
-      - uses: two-inc/claude-code-reviewer@main
+      - uses: two-inc/actions/claude-reviewer@main
         env:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
         with:
