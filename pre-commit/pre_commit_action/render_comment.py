@@ -22,7 +22,7 @@ def render_comment(
     actor: str,
 ) -> str:
     try:
-        with open(output_path) as f:
+        with open(output_path, encoding="utf-8", errors="replace") as f:
             raw = f.read()
     except OSError as err:
         raw = f"(failed to read {output_path}: {err})"
@@ -67,9 +67,9 @@ Author ✍️@{actor}"""
 if __name__ == "__main__":
     output_path = sys.argv[1]
     comment_path = sys.argv[2] if len(sys.argv) > 2 else "pre-commit-comment.md"
-    exit_code = os.environ["PRE_COMMIT_EXIT_CODE"]
-    base_ref = os.environ["PRE_COMMIT_BASE_REF"]
-    actor = os.environ["PRE_COMMIT_ACTOR"]
+    exit_code = os.environ.get("PRE_COMMIT_EXIT_CODE", "1")
+    base_ref = os.environ.get("PRE_COMMIT_BASE_REF", "main")
+    actor = os.environ.get("PRE_COMMIT_ACTOR", "ghost")
     comment = render_comment(output_path, exit_code, base_ref, actor)
-    with open(comment_path, "w") as f:
+    with open(comment_path, "w", encoding="utf-8") as f:
         f.write(comment)

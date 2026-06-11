@@ -42,3 +42,16 @@ def test_command_includes_base_ref(tmp_path):
     cmd = mock_run.call_args[0][0]
     assert "origin/release" in cmd
     assert "--show-diff-on-failure" in cmd
+
+
+def test_command_empty_base_ref_uses_all_files(tmp_path):
+    output = tmp_path / "out.txt"
+    with patch(
+        "pre_commit_action.run_hooks.subprocess.run",
+        return_value=_mock_result(0, ""),
+    ) as mock_run:
+        run_precommit("", "HEAD", str(output))
+    cmd = mock_run.call_args[0][0]
+    assert "--all-files" in cmd
+    assert "--from-ref" not in cmd
+    assert "--show-diff-on-failure" in cmd

@@ -93,7 +93,7 @@ runs:
       # silently swallowed). Capture the code with -e disabled instead.
       run: |
         set +e
-        python -m pre_commit_action.run_hooks ${{ github.base_ref }} HEAD pre-commit-output
+        python -m pre_commit_action.run_hooks "${{ github.base_ref }}" HEAD pre-commit-output
         echo "EXIT_CODE=$?" >> "$GITHUB_OUTPUT"
 
     - name: Render comment
@@ -116,4 +116,7 @@ runs:
     - name: Report pre-commit status
       shell: bash
       # Fail loud if the exit code is somehow missing rather than `exit ''` -> 0.
-      run: exit ${{ steps.pre-commit.outputs.EXIT_CODE || '1' }}
+      # Pass via env + shell default expansion to avoid GHA expression coercion.
+      env:
+        EXIT_CODE: ${{ steps.pre-commit.outputs.EXIT_CODE }}
+      run: exit "${EXIT_CODE:-1}"

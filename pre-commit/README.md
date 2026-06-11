@@ -1,4 +1,4 @@
-# pre-commit-action
+# pre-commit
 
 Composite action that runs [pre-commit](https://pre-commit.com/) hooks against the PR diff and posts a sticky comment with the result.
 
@@ -27,7 +27,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: two-inc/pre-commit-action@main
+      - uses: two-inc/actions/pre-commit@main
         with:
           python-version: "3.12"
 ```
