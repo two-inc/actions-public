@@ -1,0 +1,45 @@
+name: pre-commit CI
+
+# Path-filtered so this only runs when the pre-commit action changes. Re-homed
+# from the pre-commit-action repo's own ci.yaml during the INF-1598 consolidation
+# (workflows only run from the repo-root .github/workflows, not from a subdir).
+
+on:
+    pull_request:
+        paths:
+            - "pre-commit/**"
+            - ".github/workflows/ci-pre-commit.yaml"
+    push:
+        branches: [main]
+        paths:
+            - "pre-commit/**"
+            - ".github/workflows/ci-pre-commit.yaml"
+
+concurrency:
+    group: pre-commit-ci-${{ github.event.pull_request.number || github.run_id }}
+    cancel-in-progress: true
+
+defaults:
+    run:
+        working-directory: pre-commit
+
+jobs:
+    test:
+        runs-on: ${{ vars.RUNNER_STANDARD }}
+        timeout-minutes: 10
+        steps:
+            - uses: actions/checkout@v6
+
+            - uses: astral-sh/setup-uv@v7
+              with:
+                  enable-cache: true
+
+            - uses: actions/setup-python@v6
+              with:
+                  python-version: "3.12"
+
+            - name: Install dependencies
+              run: pip install --quiet ".[dev]"
+
+            - name: Run tests
+              run: pytest
