@@ -25,7 +25,7 @@ defaults:
 
 jobs:
     test:
-        runs-on: ${{ vars.RUNNER_STANDARD }}
+        runs-on: ubuntu-latest
         timeout-minutes: 10
         steps:
             - uses: actions/checkout@v6
