@@ -85,8 +85,6 @@ runs:
     - name: Run pre-commit
       id: pre-commit
       shell: bash
-      env:
-        PIP_EXTRA_INDEX_URL: https://europe-north1-python.pkg.dev/two-artifacts/pypi-virtual/simple/
       # The default composite shell runs bash -e, which would abort this step on
       # hook failure before EXIT_CODE is written (and continue-on-error would
       # mask it, so the report step's `exit ''` succeeded - failures were
