@@ -26,10 +26,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  # Mints a short-lived Linear token in a job with no access to PR content,
-  # so the OAuth client secret and GCP credentials never reach the runner
-  # that executes Claude. See "Linear integration" below.
-  mint-linear-token:
+  code-review:
     runs-on: ${{ vars.RUNNER_STANDARD }}
     if: |
       (
@@ -40,34 +37,18 @@ jobs:
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
-    permissions:
-      id-token: write
-    outputs:
-      token: ${{ steps.mint.outputs.token }}
     steps:
-      - id: mint
-        uses: two-inc/actions/linear-token@main
+      # Mints a short-lived Linear token via WIF, exports it as a masked
+      # LINEAR_API_KEY job env, and scrubs the GCP credentials before
+      # returning — so the claude-reviewer step never sees the OAuth
+      # client secret or GCP creds. See "Linear integration" below.
+      - uses: two-inc/actions/linear-token@main
         with:
           linear-client-id: ${{ vars.LINEAR_CLIENT_ID }}
           workload-identity-provider: <pool-prefix>/<repo>
           service-account: gha-linear-token-minter@tillit-api.iam.gserviceaccount.com
 
-  code-review:
-    runs-on: ${{ vars.RUNNER_STANDARD }}
-    needs: [mint-linear-token]
-    if: |
-      (
-        github.event_name == 'pull_request' &&
-        vars.CLAUDE_REVIEW_CONFIG != '' &&
-        fromJSON(vars.CLAUDE_REVIEW_CONFIG)[format('{0}:{1}', github.base_ref, github.event.action)] == true
-      ) ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
-    steps:
       - uses: two-inc/actions-public/claude-reviewer@main
-        env:
-          LINEAR_API_KEY: ${{ needs.mint-linear-token.outputs.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_app_client_id: ${{ vars.TWO_INC_APP_CLIENT_ID }}
@@ -98,9 +79,9 @@ You only need one authentication method.
 
 If a `LINEAR_API_KEY` is available in the environment, Claude can create Linear issues for significant problems found during review. The action itself never mints or fetches the token — it only consumes whatever `LINEAR_API_KEY` env the caller provides. This is deliberate: the review job runs an LLM with Bash access on untrusted PR content, so it must never hold GCP credentials or the Linear OAuth client secret.
 
-**Option 1: Mint a short-lived token in a separate job (Recommended)**
+**Option 1: Mint a short-lived token with `linear-token` (Recommended)**
 
-As in the template above, a `mint-linear-token` job with `id-token: write` runs `two-inc/actions/linear-token@main`, which authenticates to GCP via Workload Identity Federation as `gha-linear-token-minter@tillit-api.iam.gserviceaccount.com` and mints a short-lived Linear OAuth token. The review job takes `needs: [mint-linear-token]` and passes `LINEAR_API_KEY: ${{ needs.mint-linear-token.outputs.token }}`. The client secret and GCP credentials only ever exist on the mint job's runner; no persisted Linear secret is needed in GitHub (`LINEAR_CLIENT_ID` is a public org variable).
+As in the template above, a `two-inc/actions/linear-token@main` step placed before the `claude-reviewer` step (in a job with `id-token: write`) authenticates to GCP via Workload Identity Federation as `gha-linear-token-minter@tillit-api.iam.gserviceaccount.com`, mints a short-lived Linear OAuth token, sets it as a masked `LINEAR_API_KEY` job env, and scrubs the GCP credentials before returning. By the time the `claude-reviewer` step runs, only the masked short-lived token remains — never the OAuth client secret or GCP credentials. No persisted Linear secret is needed in GitHub (`LINEAR_CLIENT_ID` is a public org variable).
 
 **Option 2: Inject a token directly (Legacy)**
 
