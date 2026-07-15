@@ -38,9 +38,18 @@ jobs:
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
     steps:
-      - uses: two-inc/actions/claude-reviewer@main
-        env:
-          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+      # Mints a short-lived Linear token via WIF and exports it as a masked
+      # LINEAR_API_KEY job env. No GCP credential is ever created on the
+      # runner (access-token-only auth, no ADC file, no exported GCP env),
+      # so the claude-reviewer step never sees the OAuth client secret or
+      # any GCP credential. See "Linear integration" below.
+      - uses: two-inc/actions/linear-token@main
+        with:
+          linear-client-id: ${{ vars.LINEAR_CLIENT_ID }}
+          workload-identity-provider: <pool-prefix>/<repo>
+          service-account: gha-linear-token-minter@tillit-api.iam.gserviceaccount.com
+
+      - uses: two-inc/actions-public/claude-reviewer@main
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_app_client_id: ${{ vars.TWO_INC_APP_CLIENT_ID }}
@@ -66,6 +75,20 @@ OAuth tokens provide better security and can be rotated independently from your 
 3. Use in workflow: `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}`
 
 You only need one authentication method.
+
+### Linear integration (optional)
+
+If a `LINEAR_API_KEY` is available in the environment, Claude can create Linear issues for significant problems found during review. The action itself never mints or fetches the token — it only consumes whatever `LINEAR_API_KEY` env the caller provides. This is deliberate: the review job runs an LLM with Bash access on untrusted PR content, so it must never hold GCP credentials or the Linear OAuth client secret.
+
+**Option 1: Mint a short-lived token with `linear-token` (Recommended)**
+
+As in the template above, a `two-inc/actions/linear-token@main` step placed before the `claude-reviewer` step (in a job with `id-token: write`) authenticates to GCP via Workload Identity Federation as `gha-linear-token-minter@tillit-api.iam.gserviceaccount.com`, mints a short-lived Linear OAuth token, and sets it as a masked `LINEAR_API_KEY` job env. It never creates a GCP credential on the runner: WIF auth is access-token-only (no ADC credentials file is written, no GCP environment variables are exported), and the OAuth client secret is fetched over the Secret Manager REST API without touching disk. By the time the `claude-reviewer` step runs, only the masked short-lived token is present — never the client secret, never any GCP credential. No persisted Linear secret is needed in GitHub (`LINEAR_CLIENT_ID` is a public org variable).
+
+**Option 2: Inject a token directly (Legacy)**
+
+Set `LINEAR_API_KEY` as an `env` on the action step (e.g. from a repo secret). When present, it is used as-is.
+
+If neither is provided, the review still runs — Claude just won't create Linear issues.
 
 ## Controlling When Reviews Run
 
@@ -128,9 +151,7 @@ If `CLAUDE_REVIEW_CONFIG` is empty or unset, auto-reviews are disabled entirely.
 Add repository-specific review instructions via `extra_prompt`:
 
 ```yaml
-      - uses: two-inc/actions/claude-reviewer@main
-        env:
-          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+      - uses: two-inc/actions-public/claude-reviewer@main
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_app_client_id: ${{ vars.TWO_INC_APP_CLIENT_ID }}
