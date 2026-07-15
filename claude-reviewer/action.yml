@@ -51,6 +51,12 @@ inputs:
   github_app_private_key:
     description: 'GitHub App private key for generating a token with cross-repo access'
     required: false
+  linear_workload_identity_provider:
+    description: 'GCP Workload Identity Federation provider for minting a short-lived Linear OAuth token (requires linear_service_account and id-token: write permission)'
+    required: false
+  linear_service_account:
+    description: 'GCP service account to impersonate for minting a short-lived Linear OAuth token (e.g. gha-linear-token-minter@tillit-api.iam.gserviceaccount.com)'
+    required: false
   prompt:
     description: 'Custom review prompt'
     required: false
@@ -235,6 +241,44 @@ runs:
           sudo apt install gh -y
         fi
         gh --version
+
+    # Linear token minting: if the caller has NOT injected a legacy LINEAR_API_KEY env
+    # and has provided the linear WIF inputs, mint a short-lived OAuth token from the
+    # Linear OAuth app credentials held in GCP Secret Manager. WIF is identity-based —
+    # no persisted secrets in GitHub. Legacy callers injecting LINEAR_API_KEY keep
+    # working unchanged; callers providing neither simply get no Linear integration.
+    - name: Authenticate to Google Cloud for Linear token mint
+      if: ${{ env.LINEAR_API_KEY == '' && inputs.linear_workload_identity_provider != '' && inputs.linear_service_account != '' }}
+      uses: google-github-actions/auth@v3
+      with:
+        workload_identity_provider: ${{ inputs.linear_workload_identity_provider }}
+        service_account: ${{ inputs.linear_service_account }}
+        create_credentials_file: true
+
+    - name: Set up gcloud for Linear token mint
+      if: ${{ env.LINEAR_API_KEY == '' && inputs.linear_workload_identity_provider != '' && inputs.linear_service_account != '' }}
+      uses: google-github-actions/setup-gcloud@v3
+
+    - name: Mint short-lived Linear OAuth token
+      if: ${{ env.LINEAR_API_KEY == '' && inputs.linear_workload_identity_provider != '' && inputs.linear_service_account != '' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        client_id="$(gcloud secrets versions access latest --secret=LINEAR_CLIENT_ID --project=tillit-api)"
+        client_secret="$(gcloud secrets versions access latest --secret=LINEAR_CLIENT_SECRET --project=tillit-api)"
+        echo "::add-mask::${client_secret}"
+
+        token="$(curl -fsS -X POST https://api.linear.app/oauth/token \
+          -d grant_type=client_credentials \
+          -d client_id="${client_id}" \
+          -d client_secret="${client_secret}" \
+          -d "scope=read write" | jq -r '.access_token // empty')"
+        if [ -z "${token}" ]; then
+          echo "::error::Failed to mint Linear OAuth token"
+          exit 1
+        fi
+        echo "::add-mask::${token}"
+        echo "LINEAR_API_KEY=${token}" >> "$GITHUB_ENV"
 
     - name: Prefetch PR context
       shell: bash

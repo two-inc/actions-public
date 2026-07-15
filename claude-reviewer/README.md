@@ -38,13 +38,13 @@ jobs:
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
     steps:
-      - uses: two-inc/actions/claude-reviewer@main
-        env:
-          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+      - uses: two-inc/actions-public/claude-reviewer@main
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_app_client_id: ${{ vars.TWO_INC_APP_CLIENT_ID }}
           github_app_private_key: ${{ secrets.TWO_INC_APP_PRIVATE_KEY }}
+          linear_workload_identity_provider: <tillit-api WIF provider for this repo>
+          linear_service_account: gha-linear-token-minter@tillit-api.iam.gserviceaccount.com
 ```
 
 ## Configuration
@@ -66,6 +66,20 @@ OAuth tokens provide better security and can be rotated independently from your 
 3. Use in workflow: `anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}`
 
 You only need one authentication method.
+
+### Linear integration (optional)
+
+If a `LINEAR_API_KEY` is available in the environment, Claude can create Linear issues for significant problems found during review. There are two ways to provide it:
+
+**Option 1: Mint a short-lived token via Workload Identity Federation (Recommended)**
+
+Pass both `linear_workload_identity_provider` and `linear_service_account`. The action authenticates to GCP via WIF, reads the Linear OAuth app credentials (`LINEAR_CLIENT_ID`/`LINEAR_CLIENT_SECRET`) from Secret Manager in the `tillit-api` project, and mints a short-lived OAuth token scoped to the job. No persisted Linear secret is needed in GitHub. Requires `id-token: write` in the workflow permissions (already included in the template above).
+
+**Option 2: Inject a token directly (Legacy)**
+
+Set `LINEAR_API_KEY` as an `env` on the action step. When present, it is used as-is and the WIF mint is skipped entirely.
+
+If neither is provided, the review still runs — Claude just won't create Linear issues.
 
 ## Controlling When Reviews Run
 
@@ -109,6 +123,8 @@ If `CLAUDE_REVIEW_CONFIG` is empty or unset, auto-reviews are disabled entirely.
 | `github_app_client_id` | No | | GitHub App client ID for cross-repo access (e.g. private plugin marketplaces) |
 | `github_app_id` | No | | DEPRECATED — use `github_app_client_id` instead. Numeric GitHub App ID, kept as a backward-compatible alias. |
 | `github_app_private_key` | No | | GitHub App private key for cross-repo access |
+| `linear_workload_identity_provider` | No | | GCP WIF provider for minting a short-lived Linear OAuth token (requires `linear_service_account` and `id-token: write`) |
+| `linear_service_account` | No | | GCP service account to impersonate for the Linear token mint |
 | `prompt` | No | *(built-in review prompt)* | Custom review prompt (replaces default) |
 | `extra_prompt` | No | | Additional instructions appended to base prompt |
 | `claude_args` | No | `--max-turns 20 --allowedTools ...` | Additional Claude CLI arguments |
@@ -128,9 +144,7 @@ If `CLAUDE_REVIEW_CONFIG` is empty or unset, auto-reviews are disabled entirely.
 Add repository-specific review instructions via `extra_prompt`:
 
 ```yaml
-      - uses: two-inc/actions/claude-reviewer@main
-        env:
-          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+      - uses: two-inc/actions-public/claude-reviewer@main
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_app_client_id: ${{ vars.TWO_INC_APP_CLIENT_ID }}
