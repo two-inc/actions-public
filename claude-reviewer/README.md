@@ -26,8 +26,35 @@ permissions:
   pull-requests: write
 
 jobs:
+  # Mints a short-lived Linear token in a job with no access to PR content,
+  # so the OAuth client secret and GCP credentials never reach the runner
+  # that executes Claude. See "Linear integration" below.
+  mint-linear-token:
+    runs-on: ${{ vars.RUNNER_STANDARD }}
+    if: |
+      (
+        github.event_name == 'pull_request' &&
+        vars.CLAUDE_REVIEW_CONFIG != '' &&
+        fromJSON(vars.CLAUDE_REVIEW_CONFIG)[format('{0}:{1}', github.base_ref, github.event.action)] == true
+      ) ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+    permissions:
+      id-token: write
+    outputs:
+      token: ${{ steps.mint.outputs.token }}
+    steps:
+      - id: mint
+        uses: two-inc/actions/linear-token@main
+        with:
+          linear-client-id: ${{ vars.LINEAR_CLIENT_ID }}
+          workload-identity-provider: <pool-prefix>/<repo>
+          service-account: gha-linear-token-minter@tillit-api.iam.gserviceaccount.com
+
   code-review:
     runs-on: ${{ vars.RUNNER_STANDARD }}
+    needs: [mint-linear-token]
     if: |
       (
         github.event_name == 'pull_request' &&
@@ -39,12 +66,12 @@ jobs:
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
     steps:
       - uses: two-inc/actions-public/claude-reviewer@main
+        env:
+          LINEAR_API_KEY: ${{ needs.mint-linear-token.outputs.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_app_client_id: ${{ vars.TWO_INC_APP_CLIENT_ID }}
           github_app_private_key: ${{ secrets.TWO_INC_APP_PRIVATE_KEY }}
-          linear_workload_identity_provider: <tillit-api WIF provider for this repo>
-          linear_service_account: gha-linear-token-minter@tillit-api.iam.gserviceaccount.com
 ```
 
 ## Configuration
@@ -69,15 +96,15 @@ You only need one authentication method.
 
 ### Linear integration (optional)
 
-If a `LINEAR_API_KEY` is available in the environment, Claude can create Linear issues for significant problems found during review. There are two ways to provide it:
+If a `LINEAR_API_KEY` is available in the environment, Claude can create Linear issues for significant problems found during review. The action itself never mints or fetches the token — it only consumes whatever `LINEAR_API_KEY` env the caller provides. This is deliberate: the review job runs an LLM with Bash access on untrusted PR content, so it must never hold GCP credentials or the Linear OAuth client secret.
 
-**Option 1: Mint a short-lived token via Workload Identity Federation (Recommended)**
+**Option 1: Mint a short-lived token in a separate job (Recommended)**
 
-Pass both `linear_workload_identity_provider` and `linear_service_account`. The action authenticates to GCP via WIF, reads the Linear OAuth app credentials (`LINEAR_CLIENT_ID`/`LINEAR_CLIENT_SECRET`) from Secret Manager in the `tillit-api` project, and mints a short-lived OAuth token scoped to the job. No persisted Linear secret is needed in GitHub. Requires `id-token: write` in the workflow permissions (already included in the template above).
+As in the template above, a `mint-linear-token` job with `id-token: write` runs `two-inc/actions/linear-token@main`, which authenticates to GCP via Workload Identity Federation as `gha-linear-token-minter@tillit-api.iam.gserviceaccount.com` and mints a short-lived Linear OAuth token. The review job takes `needs: [mint-linear-token]` and passes `LINEAR_API_KEY: ${{ needs.mint-linear-token.outputs.token }}`. The client secret and GCP credentials only ever exist on the mint job's runner; no persisted Linear secret is needed in GitHub (`LINEAR_CLIENT_ID` is a public org variable).
 
 **Option 2: Inject a token directly (Legacy)**
 
-Set `LINEAR_API_KEY` as an `env` on the action step. When present, it is used as-is and the WIF mint is skipped entirely.
+Set `LINEAR_API_KEY` as an `env` on the action step (e.g. from a repo secret). When present, it is used as-is.
 
 If neither is provided, the review still runs — Claude just won't create Linear issues.
 
@@ -123,8 +150,6 @@ If `CLAUDE_REVIEW_CONFIG` is empty or unset, auto-reviews are disabled entirely.
 | `github_app_client_id` | No | | GitHub App client ID for cross-repo access (e.g. private plugin marketplaces) |
 | `github_app_id` | No | | DEPRECATED — use `github_app_client_id` instead. Numeric GitHub App ID, kept as a backward-compatible alias. |
 | `github_app_private_key` | No | | GitHub App private key for cross-repo access |
-| `linear_workload_identity_provider` | No | | GCP WIF provider for minting a short-lived Linear OAuth token (requires `linear_service_account` and `id-token: write`) |
-| `linear_service_account` | No | | GCP service account to impersonate for the Linear token mint |
 | `prompt` | No | *(built-in review prompt)* | Custom review prompt (replaces default) |
 | `extra_prompt` | No | | Additional instructions appended to base prompt |
 | `claude_args` | No | `--max-turns 20 --allowedTools ...` | Additional Claude CLI arguments |
