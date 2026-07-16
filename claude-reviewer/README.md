@@ -38,18 +38,24 @@ jobs:
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
     steps:
-      # Mints a short-lived Linear token via WIF and exports it as a masked
-      # LINEAR_API_KEY job env. No GCP credential is ever created on the
-      # runner (access-token-only auth, no ADC file, no exported GCP env),
-      # so the claude-reviewer step never sees the OAuth client secret or
-      # any GCP credential. See "Linear integration" below.
-      - uses: two-inc/actions/linear-token@main
+      # Mints a short-lived Linear token via WIF, exposed only as the step's
+      # masked `token` output. No GCP credential is ever created on the
+      # runner (access-token-only auth, no ADC file, no exported GCP env).
+      # See "Linear integration" below.
+      - name: Mint Linear token
+        id: linear-token
+        uses: two-inc/actions/linear-token@main
         with:
           client-id: ${{ vars.LINEAR_CLIENT_ID }}
           workload-identity-provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER_PREFIX_TILLIT_API }}/${{ github.event.repository.name }}
           service-account: gha-linear-token-minter@tillit-api.iam.gserviceaccount.com
 
-      - uses: two-inc/actions-public/claude-reviewer@main
+      # The token is passed explicitly to this step only — it never enters
+      # the job-wide environment, so no other step can read it.
+      - name: Claude review
+        uses: two-inc/actions-public/claude-reviewer@main
+        env:
+          LINEAR_API_KEY: ${{ steps.linear-token.outputs.token }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_app_client_id: ${{ vars.TWO_INC_APP_CLIENT_ID }}
@@ -82,7 +88,7 @@ If a `LINEAR_API_KEY` is available in the environment, Claude can create Linear 
 
 **Option 1: Mint a short-lived token with `linear-token` (Recommended)**
 
-As in the template above, a `two-inc/actions/linear-token@main` step placed before the `claude-reviewer` step (in a job with `id-token: write`) authenticates to GCP via Workload Identity Federation as `gha-linear-token-minter@tillit-api.iam.gserviceaccount.com`, mints a short-lived Linear OAuth token, and sets it as a masked `LINEAR_API_KEY` job env. It never creates a GCP credential on the runner: WIF auth is access-token-only (no ADC credentials file is written, no GCP environment variables are exported), and the OAuth client secret is fetched over the Secret Manager REST API without touching disk. By the time the `claude-reviewer` step runs, only the masked short-lived token is present — never the client secret, never any GCP credential. No persisted Linear secret is needed in GitHub (`LINEAR_CLIENT_ID` is a public org variable).
+As in the template above, a `two-inc/actions/linear-token@main` step (with `id: linear-token`) placed before the `claude-reviewer` step (in a job with `id-token: write`) authenticates to GCP via Workload Identity Federation as `gha-linear-token-minter@tillit-api.iam.gserviceaccount.com` and mints a short-lived Linear OAuth token, exposed only as the step's masked `token` output. The reviewer step receives it explicitly via `env: LINEAR_API_KEY: ${{ steps.linear-token.outputs.token }}` — the token is scoped to that one step and never enters the job-wide environment, so no other step can read it. Nor does any GCP credential ever exist on the runner: WIF auth is access-token-only (no ADC credentials file is written, no GCP environment variables are exported), and the OAuth client secret is fetched over the Secret Manager REST API without touching disk. The reviewer step therefore only ever sees the masked short-lived token — never the client secret, never any GCP credential. No persisted Linear secret is needed in GitHub (`LINEAR_CLIENT_ID` is a public org variable).
 
 **Option 2: Inject a token directly (Legacy)**
 
