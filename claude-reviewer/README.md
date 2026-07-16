@@ -45,9 +45,9 @@ jobs:
       # any GCP credential. See "Linear integration" below.
       - uses: two-inc/actions/linear-token@main
         with:
-          linear-client-id: ${{ vars.LINEAR_CLIENT_ID }}
-          linear-workload-identity-provider: <pool-prefix>/<repo>
-          linear-service-account: gha-linear-token-minter@tillit-api.iam.gserviceaccount.com
+          client-id: ${{ vars.LINEAR_CLIENT_ID }}
+          workload-identity-provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER_PREFIX_TILLIT_API }}/${{ github.event.repository.name }}
+          service-account: gha-linear-token-minter@tillit-api.iam.gserviceaccount.com
 
       - uses: two-inc/actions-public/claude-reviewer@main
         with:
