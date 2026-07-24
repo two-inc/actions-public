@@ -42,6 +42,15 @@ inputs:
     description: 'Comma-separated list of bot usernames allowed to trigger reviews (use * for all bots)'
     required: false
     default: 'dependabot,deepsource-autofix,two-inc'
+  prefetch_pr_context:
+    description: >-
+      Prefetch the PR's details, reviews, comments, review-threads and diff into
+      /tmp/pr-context before running Claude (default 'true'). Set 'false' when the
+      caller passes its own prompt that does not read those files: the prefetch
+      paginates review-threads via GraphQL and 504s on PRs with a large review
+      history, so opting out avoids a failure the caller does not need.
+    required: false
+    default: 'true'
   github_app_id:
     description: 'DEPRECATED: use github_app_client_id instead. Numeric GitHub App ID.'
     required: false
@@ -237,6 +246,7 @@ runs:
         gh --version
 
     - name: Prefetch PR context
+      if: ${{ inputs.prefetch_pr_context != 'false' }}
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
