@@ -41,7 +41,7 @@ inputs:
   allowed_bots:
     description: 'Comma-separated list of bot usernames allowed to trigger reviews (use * for all bots)'
     required: false
-    default: 'dependabot,deepsource-autofix,two-inc'
+    default: 'dependabot,deepsource-autofix,two-inc,claude'
   prefetch_pr_context:
     description: >-
       Prefetch the PR's details, reviews, comments, review-threads and diff into
