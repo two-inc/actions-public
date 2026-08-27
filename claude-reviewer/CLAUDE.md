@@ -42,6 +42,28 @@ The `if:` expression in consuming workflows evaluates this without a separate jo
 fromJSON(vars.CLAUDE_REVIEW_CONFIG)[format('{0}:{1}', github.base_ref, github.event.action)] == true
 ```
 
+## Gotchas
+
+- **Marketplace URLs must be full HTTPS** — the `org/repo` shorthand does NOT
+  work in `plugin_marketplaces`; use `https://github.com/two-inc/agent-skills.git`.
+- **Private marketplace auth**: the clone needs a GitHub App token
+  (`actions/create-github-app-token@v1` with `TWO_INC_APP_ID` /
+  `TWO_INC_APP_PRIVATE_KEY`) applied via a git URL rewrite:
+  `git config --global url."https://x-access-token:TOKEN@github.com/".insteadOf "https://github.com/"`.
+- **`use_sticky_comment` stays false** — sticky comments conflict with the
+  "do nothing if already approved" prompt logic.
+- **Session-limit failures**: when the shared `CLAUDE_CODE_OAUTH_TOKEN` hits
+  its usage limit, runs fail with
+  `Claude result reported subtype success with is_error:true` after ~30s —
+  nothing wrong with the PR. The limit resets on the hour; rerun just the
+  failed job after the reset (`gh run rerun <run-id> --failed`). During an
+  exhaustion window this fails org-wide, so expect the same signature across
+  repos.
+- **CLAUDE_REVIEW_CONFIG stays flat** — flat `branch:event` JSON keys enable
+  pure expression evaluation in consuming workflows; no wildcards or
+  fallbacks, explicit config only, and all filtering lives in consuming
+  workflows, never in action.yml (keep it a pure passthrough).
+
 ## Adding this action to a new repo
 
 See README.md for the full workflow YAML template. Additional conventions:
