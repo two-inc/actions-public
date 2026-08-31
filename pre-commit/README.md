@@ -37,7 +37,7 @@ jobs:
 | Input            | Default               | Description                                                                                                                                                       |
 | ---------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `python-version` | `3.12`                | Python version to install                                                                                                                                         |
-| `github-token`   | `${{ github.token }}` | Token used to post the sticky comment                                                                                                                             |
+| `github-token`   | `${{ github.token }}` | Token used to post the sticky comment and to authenticate hook-repo clones                                                                                        |
 | `node-version`   | _unset_               | If set, install Node.js of this version and run `npm ci` before pre-commit. Needed for hybrid Python+Node repos whose hooks import packages from `node_modules`. |
 
 ## Behaviour
@@ -47,6 +47,14 @@ jobs:
 - Runs `uvx pre-commit run --from-ref ... --to-ref ...` against the PR diff. Pre-commit is installed in an ephemeral environment; it manages each hook's isolated environment itself.
 - Posts the result as a sticky PR comment identified by the `pre-commit` header marker — the comment is updated in place across pushes instead of deleted and recreated.
 - Exits with pre-commit's exit code so the job reflects pass/fail.
+
+## Hook-repo clones on a cold cache
+
+`actions/checkout` scopes its git credentials to the repository it checks out, so the clones pre-commit makes into `~/.cache/pre-commit` are unauthenticated. On a cache hit nothing is cloned and this never shows; on a cache miss the clone can be rejected, and git then blocks asking for a username, so pre-commit exits 3 having run no hook at all.
+
+The run step therefore passes `github-token` to git as an `insteadOf` rewrite for `https://github.com/`, supplied through `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_*` / `GIT_CONFIG_VALUE_*`. Those are on pre-commit's allow-list of `GIT_*` variables it forwards to git, so the token reaches the clone without being written to a config file on the runner. Any git config already supplied that way is appended to rather than replaced.
+
+A pre-commit exit code other than 0 or 1 means pre-commit itself failed rather than a hook reporting findings, and the sticky comment says so instead of asking the author to run pre-commit locally.
 
 ## `PIP_EXTRA_INDEX_URL`
 

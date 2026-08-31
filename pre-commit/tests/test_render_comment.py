@@ -57,3 +57,21 @@ def test_middle_truncate_preserves_head_and_tail():
     result = middle_truncate(big)
     assert result.startswith("START")
     assert result.endswith("END")
+
+
+def test_environment_error_does_not_blame_the_diff(tmp_path):
+    out = tmp_path / "output.txt"
+    out.write_text("An unexpected error has occurred: CalledProcessError")
+    result = render_comment(str(out), "3", "main", "dave")
+    assert "🚫" in result
+    assert "pre-commit run --from-ref" not in result
+    assert "rather than a finding about your diff" in result
+    assert "Exit code: 3" in result
+
+
+def test_environment_error_heading_says_error(tmp_path):
+    out = tmp_path / "output.txt"
+    out.write_text("boom")
+    assert "Pre-commit error" in render_comment(str(out), "3", "main", "x")
+    assert "Pre-commit failure" in render_comment(str(out), "1", "main", "x")
+    assert "Pre-commit success" in render_comment(str(out), "0", "main", "x")

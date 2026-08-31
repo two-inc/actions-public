@@ -7,7 +7,9 @@ inputs:
     required: false
     default: "3.12"
   github-token:
-    description: Token used to post the sticky PR comment
+    description: |
+      Token used to post the sticky PR comment, and to authenticate the hook-repo
+      clones pre-commit makes when its environment cache is cold.
     required: false
     default: ${{ github.token }}
   node-version:
@@ -89,6 +91,8 @@ runs:
       # hook failure before EXIT_CODE is written (and continue-on-error would
       # mask it, so the report step's `exit ''` succeeded - failures were
       # silently swallowed). Capture the code with -e disabled instead.
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
         set +e
         python -m pre_commit_action.run_hooks "${{ github.base_ref }}" HEAD pre-commit-output
