@@ -49,6 +49,8 @@ jobs:
 
 The App token is what lets the job push to a protected branch and open a pull
 request that triggers downstream CI; the default `GITHUB_TOKEN` does neither.
+With no credentials at all the job falls back to `github.token`, which is enough
+for an unprotected target but will be refused by branch protection.
 
 ## Behaviour
 
