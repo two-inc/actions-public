@@ -15,12 +15,14 @@ else lives in the private `two-inc/actions`.
 | -------------------------------------- | ------------------------------------------------- |
 | [`pre-commit`](./pre-commit)           | Run pre-commit hooks and post a sticky PR comment |
 | [`claude-reviewer`](./claude-reviewer) | Run Claude Code review on pull requests           |
+| [`back-merge`](./back-merge)           | Merge a branch back after a release               |
 
 ## Usage
 
 ```yaml
 - uses: two-inc/actions-public/pre-commit@main
 - uses: two-inc/actions-public/claude-reviewer@main
+- uses: two-inc/actions-public/back-merge@main
 ```
 
 See each action's own `README.md` for inputs.
