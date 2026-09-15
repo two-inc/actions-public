@@ -1,0 +1,113 @@
+name: Back-merge
+description: Merge a source branch into a target branch, opening a PR with reviewers if it conflicts.
+inputs:
+  app-id:
+    description: 'DEPRECATED: use client-id instead. Numeric GitHub App ID.'
+    required: false
+    default: ''
+  client-id:
+    description: GitHub App client ID (preferred over deprecated app-id)
+    required: false
+    default: ''
+  app-private-key:
+    description: GitHub App private key for authentication (recommended over personal-access-token)
+    required: false
+    default: ''
+  personal-access-token:
+    description: Personal access token for Github account (deprecated - use app-id and app-private-key instead)
+    required: false
+    default: ''
+  source-ref:
+    description: Name of the source branch
+    required: true
+  target-ref:
+    description: Name of the target branch
+    required: true
+  reviewer:
+    description: Reviewer to assign the PR to in case of merge conflict
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Generate GitHub App token
+      if: (inputs.client-id != '' || inputs.app-id != '') && inputs.app-private-key != ''
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.client-id == '' && inputs.app-id || '' }}
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        owner: two-inc
+    - name: Get GitHub App User ID
+      if: (inputs.client-id != '' || inputs.app-id != '') && inputs.app-private-key != ''
+      id: get-user-id
+      shell: bash
+      run: |
+        USER_ID=$(curl -sS -H "Authorization: token $GH_TOKEN" "https://api.github.com/users/${APP_SLUG}%5Bbot%5D" | jq -r .id)
+        # Only emit the output when the API returned a real id, otherwise the bot
+        # email would become `null+...[bot]@...`.
+        if [[ "$USER_ID" != "null" && -n "$USER_ID" ]]; then
+          echo "user-id=$USER_ID" >> "$GITHUB_OUTPUT"
+        fi
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+    - name: Checkout repository
+      uses: actions/checkout@v6
+      with:
+        ref: ${{ inputs.source-ref }}
+        token: ${{ steps.app-token.outputs.token || inputs.personal-access-token }}
+        fetch-depth: 0
+    - name: Ensure GitHub CLI
+      shell: bash
+      run: |
+        # gh is pre-installed on GitHub-hosted runners; only install it when
+        # missing (some self-hosted images don't ship it). Pull a current build
+        # rather than the long-pinned old version.
+        if ! command -v gh >/dev/null 2>&1; then
+          curl -L -o gh.deb https://github.com/cli/cli/releases/download/v2.62.0/gh_2.62.0_linux_amd64.deb && sudo dpkg -i gh.deb
+        fi
+    - name: Create PR from source to target
+      shell: bash
+      env:
+        GH_TOKEN: ${{ steps.app-token.outputs.token || inputs.personal-access-token }}
+        SOURCE_REF: ${{ inputs.source-ref }}
+        TARGET_REF: ${{ inputs.target-ref }}
+        REVIEWER: ${{ inputs.reviewer }}
+        APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        USER_ID: ${{ steps.get-user-id.outputs.user-id }}
+      run: |
+        git config user.name "two-inc[bot]"
+        if [[ -n "$USER_ID" ]]; then
+          git config user.email "${USER_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+        else
+          git config user.email "two-inc[bot]@users.noreply.github.com"
+        fi
+        # Reset the target to the absolute latest remote state before merging,
+        # so a stale local ref on a persistent runner can't cause a push failure.
+        git checkout "$TARGET_REF"
+        git reset --hard "origin/$TARGET_REF"
+        if git merge "$SOURCE_REF"; then
+          # no merge conflict, push the fast-forward/merge directly
+          git push
+        else
+          # merge conflict detected, open a PR and assign reviewers
+          git merge --abort
+          branch="merge-${SOURCE_REF}-to-${TARGET_REF}"
+          # The branch name is deterministic, so a conflict PR from an earlier
+          # run may already be open with a reviewer's resolutions on it. Leave
+          # it alone: recreating the branch from the source and force-pushing
+          # would discard that work, and `gh pr create` would fail anyway
+          # because a PR already exists for this head and base. The stale PR is
+          # the lesser problem - resolving and merging it back-merges cleanly
+          # on the next push.
+          existing=$(gh pr list --head "$branch" --base "$TARGET_REF" --state open --json number --jq '.[0].number // ""')
+          if [ -n "$existing" ]; then
+            echo "Pull request #${existing} is already open for ${branch}; leaving it for its reviewer."
+            exit 0
+          fi
+          git checkout -B "$branch" "$SOURCE_REF"
+          git push --force-with-lease --set-upstream origin "$branch"
+          gh pr create --base "$TARGET_REF" --title "Merge ${SOURCE_REF} into ${TARGET_REF}" --body="" --reviewer "$REVIEWER"
+        fi
