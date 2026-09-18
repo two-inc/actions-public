@@ -16,6 +16,22 @@ Single-file action (`action.yml`) - no build step, no JS/TS. Thin passthrough to
 
 - **Includes checkout step** - the composite action runs `actions/checkout@v4` itself so consuming workflows don't need to. Required because the upstream `claude-code-action` expects a git repo to exist (for `restoreConfigFromBase` security hardening)
 - **Pins to `@v1`** - gets semver-compatible upstream patches automatically
+- **Gates comment-driven runs on real repo permission** - the gate step sets
+  `steps.gate.outputs.allowed` and every later step checks it. It runs ahead
+  of the app-token step so no credential is minted for a comment we ignore.
+  This duplicates a check upstream also makes; that is the point, we do not
+  want a security control that lives only in a third-party action.
+  Use `collaborators/{user}/permission`, never `author_association`: that
+  reports `MEMBER` for any member of the owning org and `COLLABORATOR` for a
+  read-only outside collaborator, so it is looser than it looks. On a public
+  repo the endpoint returns `read` for any account, so requiring
+  `admin`/`write` is what actually excludes strangers
+- **`gh` setup runs before the gate** - the gate calls `gh api` and these
+  runners do not all ship `gh`. That step installs no credential
+- **`*[bot]` actors bypass the permission check** - the endpoint returns
+  `none` for them (verified), so checking it would break every bot-triggered
+  review. A bot identity cannot be assumed by an outside account, and
+  `allowed_bots` is the filter for which bots count. Upstream does the same
 - **Selective commenting** - prompt is heavily tuned to only flag critical issues (security, bugs, data loss, unsafe migrations). Maximum 3 comments per PR unless genuine security issues
 - **Release PR detection** - auto-detects release PRs and creates summaries instead of reviews
 - **Duplicate avoidance** - reads all existing comments before posting, never duplicates

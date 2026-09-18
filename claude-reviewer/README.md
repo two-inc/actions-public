@@ -110,6 +110,18 @@ Set this at the org level under Settings > Secrets and variables > Actions > Var
 
 If `CLAUDE_REVIEW_CONFIG` is empty or unset, auto-reviews are disabled entirely. Users can still trigger reviews manually by mentioning `@claude` in a PR comment.
 
+### Who can trigger a review by comment
+
+An `@claude` comment only starts a review if the commenter has `write` or `admin` permission on that repository. Anyone else is skipped with a notice, and no GitHub App token is minted for the run. GitHub Apps (`*[bot]` actors) are allowed through and filtered by `allowed_bots` instead.
+
+The check is a real permission lookup (`GET /repos/{owner}/{repo}/collaborators/{user}/permission`), not `author_association`. Association would be too loose: it reports `MEMBER` for any member of the owning organisation and `COLLABORATOR` for an outside collaborator with read or triage, neither of which means write access to that repo.
+
+The action enforces this itself rather than relying on the calling workflow, because the `if:` in the template matches on comment text alone, and `issue_comment` runs on the default branch with access to org secrets whoever commented. On a public repo that would otherwise be anyone with a GitHub account.
+
+It fails closed: a failed or unexpected API response skips the review. The lookup uses the default `GITHUB_TOKEN`, which needs no extra permissions beyond what the template already grants.
+
+The `pull_request` trigger is unaffected.
+
 ## Action Features
 
 - Configurable per-branch auto-review triggers via `CLAUDE_REVIEW_CONFIG`
