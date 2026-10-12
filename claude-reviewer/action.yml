@@ -299,6 +299,8 @@ runs:
         client-id: ${{ inputs.github_app_client_id }}
         private-key: ${{ inputs.github_app_private_key }}
         owner: ${{ github.repository_owner }}
+        # Only used to clone private plugin marketplaces.
+        permission-contents: read
 
     - name: Configure git auth for private marketplace
       if: ${{ steps.gate.outputs.allowed == 'true' && steps.app-token.outputs.token != '' }}

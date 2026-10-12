@@ -39,6 +39,10 @@ runs:
         client-id: ${{ inputs.client-id }}
         private-key: ${{ inputs.app-private-key }}
         owner: two-inc
+        permission-contents: write
+        permission-pull-requests: write
+        permission-workflows: write
+        permission-members: read
     - name: Get GitHub App User ID
       if: (inputs.client-id != '' || inputs.app-id != '') && inputs.app-private-key != ''
       id: get-user-id
