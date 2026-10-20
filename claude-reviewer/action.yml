@@ -60,6 +60,14 @@ inputs:
   github_app_private_key:
     description: 'GitHub App private key for generating a token with cross-repo access'
     required: false
+  github_token:
+    description: >-
+      GitHub token Claude acts as, passed to claude-code-action's github_token,
+      which also exports it as GH_TOKEN for Claude's Bash tool. Use it to give
+      Claude permissions the Claude GitHub App lacks (e.g. a two-inc app token
+      with Dependabot alerts). Empty (default) keeps the Claude App's token.
+    required: false
+    default: ''
   prompt:
     description: 'Custom review prompt'
     required: false
@@ -392,6 +400,7 @@ runs:
         include_comments_by_actor: ${{ inputs.include_comments_by_actor }}
         exclude_comments_by_actor: ${{ inputs.exclude_comments_by_actor }}
         allowed_bots: ${{ inputs.allowed_bots }}
+        github_token: ${{ inputs.github_token }}
         show_full_output: true
         prompt: |
           ${{ inputs.prompt }}
