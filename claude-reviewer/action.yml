@@ -200,6 +200,13 @@ inputs:
     description: 'Additional instructions to append to the base prompt'
     required: false
     default: ''
+  show_full_output:
+    description: >-
+      Print Claude's full transcript to the job log (default 'true'). Set 'false'
+      when Claude reads other workflows' CI logs: their error lines would
+      otherwise show as this run's annotations.
+    required: false
+    default: 'true'
   claude_args:
     description: 'Additional Claude CLI arguments'
     required: false
@@ -401,7 +408,7 @@ runs:
         exclude_comments_by_actor: ${{ inputs.exclude_comments_by_actor }}
         allowed_bots: ${{ inputs.allowed_bots }}
         github_token: ${{ inputs.github_token }}
-        show_full_output: true
+        show_full_output: ${{ inputs.show_full_output }}
         prompt: |
           ${{ inputs.prompt }}
 
