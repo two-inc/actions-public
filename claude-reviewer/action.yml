@@ -306,16 +306,35 @@ runs:
         fetch-depth: 1
 
     - name: Generate GitHub App token
-      id: app-token
-      if: ${{ steps.gate.outputs.allowed == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '' }}
+      if: ${{ (steps.gate.outputs.allowed == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '') && inputs.github_app_client_id != '' }}
+      id: app-token-client
       uses: actions/create-github-app-token@v3
       with:
-        app-id: ${{ inputs.github_app_client_id == '' && inputs.github_app_id || '' }}
         client-id: ${{ inputs.github_app_client_id }}
         private-key: ${{ inputs.github_app_private_key }}
         owner: ${{ github.repository_owner }}
         # Only used to clone private plugin marketplaces.
         permission-contents: read
+    - name: Generate GitHub App token (numeric app ID, deprecated)
+      if: ${{ (steps.gate.outputs.allowed == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '') && inputs.github_app_client_id == '' && inputs.github_app_id != '' }}
+      id: app-token-legacy
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.github_app_id }}
+        private-key: ${{ inputs.github_app_private_key }}
+        owner: ${{ github.repository_owner }}
+        # Only used to clone private plugin marketplaces.
+        permission-contents: read
+    - name: Use whichever GitHub App token was minted
+      if: ${{ steps.gate.outputs.allowed == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '' }}
+      id: app-token
+      shell: bash
+      env:
+        TOKEN: ${{ steps.app-token-client.outputs.token || steps.app-token-legacy.outputs.token }}
+        APP_SLUG: ${{ steps.app-token-client.outputs.app-slug || steps.app-token-legacy.outputs.app-slug }}
+      run: |
+        echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+        echo "app-slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
 
     - name: Configure git auth for private marketplace
       if: ${{ steps.gate.outputs.allowed == 'true' && steps.app-token.outputs.token != '' }}
