@@ -128,15 +128,19 @@ A managed review (any caller that leaves `claude_args` empty) runs at one of two
 
 | | Standard | Deep |
 |---|---|---|
-| When | Every review | The PR has the `deep-review` label |
+| When | Triage picks it, or triage fails | Triage picks it, or the PR has the `deep-review` label |
 | Model | `claude-sonnet-5-5` | `claude-opus-5-5` |
 | Turns | 30 | 60 |
-| Approach | One reviewer that reads callers beyond the diff | Three parallel reviewers (site reliability, adversarial QA, security), whose findings the main run verifies against the code, one round |
+| Approach | One reviewer that reads callers beyond the diff | Three passes in the same run (site reliability, adversarial QA, security), then each finding verified against the code, one round. No subagents: CI ends the job when the main turn ends, so a background reviewer's findings are lost |
 | Findings | At most 5 | At most 10 |
 
-Every finding has to name a concrete failure scenario. Each review ends with a footer telling the author how to ask for another review or a deep one.
+Every finding has to name a concrete failure scenario. Each review ends with a footer telling the author how to ask for another review or a deep one, and a line saying which depth ran and why.
 
-To ask for a deep review, add the `deep-review` label and then comment `@claude`. Adding the label on its own starts nothing, because the callers don't trigger on `labeled`. While the label is on, every review of the PR is a deep one.
+**Picking the depth.** Unless the PR has the label, a triage call to `claude-haiku-5-5` runs first. It reads the PR description and diff and returns `deep` or `standard` with a one-sentence reason. It picks deep when a bug could reach production and hurt money, access or data: payments and ledgers, auth and sessions, migrations, concurrency, Terraform/IAM and deploy workflows, or cross-service contracts. The call is read-only, runs for at most 4 turns, and costs about a cent. If it fails for any reason, the review falls back to standard, so a broken triage never costs a deep run. Set `auto_depth: 'false'` to skip triage and always run standard unless the label is on.
+
+In a local backtest the triage prompt sent all four PRs with a missed P1 to deep and the clear low-risk ones to standard. Deep caught 3 of those 4 P1s and standard caught none, so triage is what puts the expensive review where it pays.
+
+To force a deep review, add the `deep-review` label and then comment `@claude`. Adding the label on its own starts nothing, because the callers don't trigger on `labeled`. While the label is on, every review of the PR is a deep one.
 
 On automatic runs the action skips Dependabot PRs and PRs that only change Markdown or `docs/`. An `@claude` comment, or the label, still reviews them. Set `skip_trivial: 'false'` to turn this off.
 
@@ -176,7 +180,10 @@ An `@claude` run checks out the PR's head commit when the PR comes from the same
 | `claude_args` | No | | Empty: managed review, where the action picks the model, turns and tools. Set: passed through verbatim, with no depth, skips or footer |
 | `standard_model` | No | `claude-sonnet-5-5` | Model for a standard managed review |
 | `deep_model` | No | `claude-opus-5-5` | Model for a deep managed review |
-| `deep_review_label` | No | `deep-review` | PR label that switches a managed review to deep |
+| `deep_review_label` | No | `deep-review` | PR label that forces a managed review to deep, skipping triage |
+| `auto_depth` | No | `true` | Run the Haiku triage call to pick standard or deep |
+| `triage_model` | No | `claude-haiku-5-5` | Model for the triage call |
+| `triage_prompt` | No | *(built-in)* | Triage prompt; must answer `{depth: standard\|deep, reason}` |
 | `skip_trivial` | No | `true` | Skip Dependabot and Markdown/docs-only PRs on automatic runs |
 | `standard_prompt` | No | *(built-in)* | Depth instructions and footer for a standard review |
 | `deep_prompt` | No | *(built-in)* | Depth instructions and footer for a deep review |
