@@ -74,6 +74,7 @@ inputs:
     default: |
       REPO: ${{ github.repository }}
       PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+      EVENT: ${{ github.event_name }}
 
       **CRITICAL - Minimise tool calls. All PR context has been pre-fetched to local files. Do NOT use MCP read tools (get_pull_request, get_issue_comments, get_pull_request_review_comments, get_pull_request_diff) — read the local files instead.**
 
@@ -159,7 +160,9 @@ inputs:
       Using the pre-fetched local files (do NOT call MCP read tools):
 
       1. **Check if action is needed**:
-         - If Claude already posted a review and no significant new commits since → exit without posting
+         - If EVENT is not `pull_request`, a human asked for this review with an `@claude` comment: always do a full review, even with no new commits
+         - If this is a deep review and Claude has not yet posted one whose footer says "Deep review", do a full review
+         - Otherwise, if Claude already posted a review and no significant new commits since → exit without posting
          - If significant new commits exist → re-review the full diff (not just new commits — they may interact with earlier changes)
          - "Significant" = changes to application code, migrations, API contracts, or configuration. Doc/comment/formatting/CI-only commits are not significant
 
@@ -174,16 +177,19 @@ inputs:
          - If all previously flagged issues are addressed: note they're resolved and recommend the PR is ready for human approval
          - If first review with no critical issues: briefly note no critical issues found
          - When concluding that the PR is ready, always end with `Ready for human approval ✅` on its own paragraph (preceded by a blank line)
+         - Below everything else, end the review body with the footer from the review-depth section at the end of these instructions, verbatim
 
-      **ONLY flag these critical issues:**
-      - Security vulnerabilities (SQL injection, XSS, auth bypasses, etc.)
-      - Critical bugs causing runtime failures, data corruption, or crashes
-      - Memory leaks or severe performance bottlenecks
-      - Breaking API changes
-      - Data loss risks or unsafe database operations
-      - Unsafe database migrations (see migration review below)
+      **Flag correctness and safety defects:**
+      - Security vulnerabilities (injection, XSS, authn/authz bypasses, secrets exposure)
+      - Bugs: wrong results, unhandled error paths, broken edge cases (empty, None, zero, duplicates, currency or timezone mismatches), runtime failures, crashes
+      - Races and ordering bugs: concurrent requests, retries, idempotency, partial failure halfway through a multi-step write
+      - Data loss, data corruption, unsafe database operations or migrations (see migration review below)
+      - Breaking API or contract changes, including callers in this repo the diff did not update
+      - Severe performance problems (N+1 queries, unbounded loops or memory on a hot path)
 
-      Do NOT comment on: style, formatting, naming, subjective preferences, non-critical optimisations, documentation, or code that works but could be "better". When in doubt, don't comment.
+      Read beyond the diff (the **Checkout** line at the end says whether the checkout is the PR's code). Before flagging, open the changed functions' callers and callees (`Grep`, `Glob`, `Read`) and confirm the defect is real. Every finding must state a concrete failure scenario (this input or state → this wrong result). If you cannot name one, don't post it.
+
+      Do NOT comment on: style, formatting, naming, subjective preferences, documentation, or code that works but could be "better".
 
       **Database Migration Review (Alembic/PostgreSQL)**:
       For PRs with Alembic migration files (under `alembic/versions/` or `migrations/versions/`), use the `two-database` plugin's `alembic-postgres-migration-helper` skill and run: `Bash(python ${CLAUDE_PLUGIN_ROOT}/two-database/scripts/validate_migration.py <migration_file>)`
@@ -192,7 +198,7 @@ inputs:
       **Rules:**
       - All feedback MUST be inline comments with `path` and `line`. Never use `mcp__github__add_issue_comment` for regular PRs. If you can't tie feedback to a specific line, don't post it
       - Never duplicate a comment already made by Claude or another reviewer
-      - Maximum 3 inline comments per PR unless there are genuine security/critical issues
+      - Respect the finding cap in the review-depth section; rank by severity and drop the weakest first
       - Use ` ```suggestion ` blocks when proposing concrete code fixes (set both `start_line` and `line` for multi-line replacements). Don't use suggestion blocks for general warnings without a single concrete fix
       - **Suggestion block formatting**: When writing suggestion blocks, the comment body must contain raw newlines and unescaped quotes — never use literal `\n` or `\"` escape sequences. The MCP tool handles JSON serialisation; you just provide the plain text content with actual line breaks
       - **Never use MCP read tools** (get_pull_request, get_issue_comments, get_pull_request_review_comments, get_pull_request_diff). All data is in the pre-fetched local files
@@ -208,9 +214,61 @@ inputs:
     required: false
     default: 'true'
   claude_args:
-    description: 'Additional Claude CLI arguments'
+    description: >-
+      Claude CLI arguments. Leave empty (default) for a managed PR review: the
+      action then picks the model, turn budget and tools from the review depth
+      (standard, or deep when the PR carries `deep_review_label`), skips
+      trivial PRs, and appends the depth prompt and footer. Setting it opts
+      out of all of that and passes the value through verbatim.
     required: false
-    default: '--max-turns 20 --allowedTools "Read,mcp__github__create_and_submit_pull_request_review,mcp__github__add_issue_comment,mcp__github_inline_comment__create_inline_comment,Write,Bash(cat *),Bash(grep *),Bash(gh api graphql:*),Bash(gh api repos/*),Bash(python *validate_migration*)"'
+    default: ''
+  standard_model:
+    description: 'Model for a standard managed review'
+    required: false
+    default: 'claude-sonnet-5-5'
+  deep_model:
+    description: 'Model for a deep managed review'
+    required: false
+    default: 'claude-opus-5-5'
+  deep_review_label:
+    description: 'PR label that switches a managed review to deep mode'
+    required: false
+    default: 'deep-review'
+  skip_trivial:
+    description: >-
+      On automatic (pull_request) runs of a managed review, skip PRs opened by
+      Dependabot and PRs that only touch Markdown or docs/. An `@claude`
+      comment or the deep-review label still reviews them.
+    required: false
+    default: 'true'
+  standard_prompt:
+    description: 'Review-depth instructions and footer appended to the prompt for a standard managed review'
+    required: false
+    default: |
+      **Review depth: standard.**
+      - Review on your own. Do not spawn subagents.
+      - Post at most 5 inline comments, highest severity first.
+
+      Footer (end the review body with this, byte for byte, after a `---` line). Keep `&#64;` as written: an at-sign followed by "claude" anywhere in your review would trigger another review of this PR.
+
+      <sub>Standard review (Sonnet). To review again, comment <code>&#64;claude</code>. For a deep review of a risky change (money movement, auth, migrations, concurrency), add the `deep-review` label, then comment <code>&#64;claude</code>.</sub>
+  deep_prompt:
+    description: 'Review-depth instructions and footer appended to the prompt for a deep managed review'
+    required: false
+    default: |
+      **Review depth: deep.** A human asked for this by labelling the PR, so spend the effort.
+
+      Run three reviewers in parallel with the Agent tool, in one turn. Give each the PR title and body, the path `/tmp/pr-context/diff.patch`, the **Checkout** note below (so they read the right version of each file), and one lens. Tell them to read callers and callees, not just the diff. Each must return numbered findings with file, line, severity (BLOCKER or BUG) and a concrete failure scenario, and must leave out anything it cannot back with one:
+      1. **Site reliability**: failure modes in production. Retries, timeouts, partial failure, idempotency, ordering, races between concurrent requests or workers, deploy and migration ordering, behaviour under load.
+      2. **Adversarial QA**: input boundaries and data shapes. Empty, None, zero, negative, duplicates, currency and timezone mismatches, states the code assumes cannot happen, and divergence between layers (API schema vs DB vs callers).
+      3. **Security**: authn and authz on every new or changed path, tenant and merchant isolation, injection, secrets, and what a caller with less privilege can now reach.
+
+      Then verify every finding yourself against the code before posting. Drop the ones you cannot reproduce by reading, and merge duplicates. Findings two reviewers both raised are the strongest. One round only, no iteration.
+      - Post at most 10 inline comments, highest severity first.
+
+      Footer (end the review body with this, byte for byte, after a `---` line). Keep `&#64;` as written: an at-sign followed by "claude" anywhere in your review would trigger another review of this PR.
+
+      <sub>Deep review (Opus, three lenses). To review again, comment <code>&#64;claude</code>. While the `deep-review` label is on, every review of this PR is a deep one; remove the label to go back to the standard review.</sub>
 
 outputs:
   session_id:
@@ -299,14 +357,124 @@ runs:
             ;;
         esac
 
-    - name: Checkout repository
+    # Picks standard or deep review, skips trivial PRs, and decides which ref to
+    # check out. Runs only after the gate allows the run, and every later step
+    # keys off `steps.plan.outputs.run`, so a gated-out run stays a no-op.
+    #
+    # A caller that sets `claude_args` is a custom job (backtests, sweeps): it
+    # gets the old passthrough behaviour, with no skips, depth or footer.
+    - name: Plan review
+      id: plan
       if: ${{ steps.gate.outputs.allowed == 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        EVENT_NAME: ${{ github.event_name }}
+        ACTOR: ${{ github.actor }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number || (github.event.issue.pull_request && github.event.issue.number) || '' }}
+        CUSTOM_ARGS: ${{ inputs.claude_args }}
+        DEEP_LABEL: ${{ inputs.deep_review_label }}
+        SKIP_TRIVIAL: ${{ inputs.skip_trivial }}
+        STANDARD_MODEL: ${{ inputs.standard_model }}
+        DEEP_MODEL: ${{ inputs.deep_model }}
+        STANDARD_PROMPT: ${{ inputs.standard_prompt }}
+        DEEP_PROMPT: ${{ inputs.deep_prompt }}
+      run: |
+        set -euo pipefail
+
+        if [ -n "$CUSTOM_ARGS" ]; then
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "managed=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "managed=true" >> "$GITHUB_OUTPUT"
+
+        # Claude's own review or reply mentioning @claude must not start
+        # another review of the same PR, or the two feed each other.
+        if [ "$EVENT_NAME" != pull_request ] && [ "$ACTOR" = 'claude[bot]' ]; then
+          echo "::notice::Skipping review: triggered by Claude's own comment."
+          echo "run=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        tools="Read,Grep,Glob,Write,mcp__github__create_and_submit_pull_request_review,mcp__github__add_issue_comment,mcp__github_inline_comment__create_inline_comment,Bash(cat *),Bash(grep *),Bash(gh api graphql:*),Bash(gh api repos/*),Bash(python *validate_migration*)"
+
+        if [ -z "$PR_NUMBER" ]; then
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "deep=false" >> "$GITHUB_OUTPUT"
+          echo "args=--model $STANDARD_MODEL --max-turns 30 --allowedTools \"$tools\"" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        # Labels and head repo come from the API rather than the event payload,
+        # so a label added after the triggering event still counts.
+        pr=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")
+        deep=false
+        if jq -e --arg l "$DEEP_LABEL" '[.labels[].name] | index($l) != null' <<<"$pr" >/dev/null; then
+          deep=true
+        fi
+
+        run=true
+        if [ "$EVENT_NAME" = pull_request ] && [ "$SKIP_TRIVIAL" = true ] && [ "$deep" = false ]; then
+          author=$(jq -r '.user.login' <<<"$pr")
+          if [ "$author" = 'dependabot[bot]' ]; then
+            echo "::notice::Skipping review: Dependabot PR. Comment @claude to review it anyway."
+            run=false
+          else
+            # A rename lists the old path too, so moving code into docs/ is not "docs-only".
+            files=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[] | .filename, (.previous_filename // empty)')
+            if [ -n "$files" ] && ! grep -qvE '(\.md$|^docs/)' <<<"$files"; then
+              echo "::notice::Skipping review: only Markdown or docs/ changed. Comment @claude to review it anyway."
+              run=false
+            fi
+          fi
+        fi
+        echo "run=$run" >> "$GITHUB_OUTPUT"
+        echo "deep=$deep" >> "$GITHUB_OUTPUT"
+
+        if [ "$deep" = true ]; then
+          echo "args=--model $DEEP_MODEL --max-turns 60 --allowedTools \"Agent,Task,$tools\"" >> "$GITHUB_OUTPUT"
+        else
+          echo "args=--model $STANDARD_MODEL --max-turns 30 --allowedTools \"$tools\"" >> "$GITHUB_OUTPUT"
+        fi
+
+        # Comment-triggered runs start on the default branch, and upstream's
+        # agent mode (used whenever a prompt is set) never switches to the PR.
+        # Check out the PR head so Claude reads the code under review, but only
+        # for same-repo PRs: these runs hold secrets, and fork code stays out.
+        checkout_note="The repo checkout is the PR's code."
+        if [ "$EVENT_NAME" != pull_request ]; then
+          head_repo=$(jq -r '.head.repo.full_name // ""' <<<"$pr")
+          if [ "$head_repo" = "$REPO" ]; then
+            echo "ref=refs/pull/${PR_NUMBER}/head" >> "$GITHUB_OUTPUT"
+          else
+            head_sha=$(jq -r '.head.sha' <<<"$pr")
+            checkout_note="This PR comes from a fork, so the repo checkout is the DEFAULT BRANCH, not the PR's code. Read the PR's version of a file with \`gh api repos/${REPO}/contents/<path>?ref=${head_sha}\` (base64 in \`.content\`) before confirming or dismissing a finding."
+          fi
+        fi
+
+        # Chosen here rather than with a `&&`/`||` expression, which treats an
+        # empty string as false and would fall through to the other prompt.
+        if [ "$deep" = true ]; then depth_prompt=$DEEP_PROMPT; else depth_prompt=$STANDARD_PROMPT; fi
+        delim="EOF_$(openssl rand -hex 8)"
+        {
+          echo "depth_prompt<<$delim"
+          echo "**Checkout:** $checkout_note"
+          echo
+          echo "$depth_prompt"
+          echo "$delim"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Checkout repository
+      if: ${{ steps.plan.outputs.run == 'true' }}
       uses: actions/checkout@v6
       with:
         fetch-depth: 1
+        ref: ${{ steps.plan.outputs.ref }}
 
     - name: Generate GitHub App token
-      if: ${{ (steps.gate.outputs.allowed == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '') && inputs.github_app_client_id != '' }}
+      if: ${{ (steps.plan.outputs.run == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '') && inputs.github_app_client_id != '' }}
       id: app-token-client
       uses: actions/create-github-app-token@v3
       with:
@@ -316,7 +484,7 @@ runs:
         # Only used to clone private plugin marketplaces.
         permission-contents: read
     - name: Generate GitHub App token (numeric app ID, deprecated)
-      if: ${{ (steps.gate.outputs.allowed == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '') && inputs.github_app_client_id == '' && inputs.github_app_id != '' }}
+      if: ${{ (steps.plan.outputs.run == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '') && inputs.github_app_client_id == '' && inputs.github_app_id != '' }}
       id: app-token-legacy
       uses: actions/create-github-app-token@v3
       with:
@@ -326,7 +494,7 @@ runs:
         # Only used to clone private plugin marketplaces.
         permission-contents: read
     - name: Use whichever GitHub App token was minted
-      if: ${{ steps.gate.outputs.allowed == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '' }}
+      if: ${{ steps.plan.outputs.run == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '' }}
       id: app-token
       shell: bash
       env:
@@ -337,12 +505,12 @@ runs:
         echo "app-slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
 
     - name: Configure git auth for private marketplace
-      if: ${{ steps.gate.outputs.allowed == 'true' && steps.app-token.outputs.token != '' }}
+      if: ${{ steps.plan.outputs.run == 'true' && steps.app-token.outputs.token != '' }}
       shell: bash
       run: git config --global url."https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/".insteadOf "https://github.com/"
 
     - name: Prefetch PR context
-      if: ${{ steps.gate.outputs.allowed == 'true' && inputs.prefetch_pr_context != 'false' }}
+      if: ${{ steps.plan.outputs.run == 'true' && inputs.prefetch_pr_context != 'false' }}
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -412,7 +580,7 @@ runs:
 
     - name: Run Claude Code Review
       id: claude-review
-      if: ${{ steps.gate.outputs.allowed == 'true' }}
+      if: ${{ steps.plan.outputs.run == 'true' }}
       uses: anthropics/claude-code-action@v1
       with:
         anthropic_api_key: ${{ inputs.anthropic_api_key }}
@@ -432,4 +600,6 @@ runs:
           ${{ inputs.prompt }}
 
           ${{ inputs.extra_prompt }}
-        claude_args: ${{ inputs.claude_args }}
+
+          ${{ steps.plan.outputs.depth_prompt }}
+        claude_args: ${{ steps.plan.outputs.managed == 'true' && steps.plan.outputs.args || inputs.claude_args }}

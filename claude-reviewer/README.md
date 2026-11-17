@@ -122,12 +122,32 @@ It fails closed: a failed or unexpected API response skips the review. The looku
 
 The `pull_request` trigger is unaffected.
 
+## Review depth
+
+A managed review (any caller that leaves `claude_args` empty) runs at one of two depths:
+
+| | Standard | Deep |
+|---|---|---|
+| When | Every review | The PR has the `deep-review` label |
+| Model | `claude-sonnet-5-5` | `claude-opus-5-5` |
+| Turns | 30 | 60 |
+| Approach | One reviewer that reads callers beyond the diff | Three parallel reviewers (site reliability, adversarial QA, security), whose findings the main run verifies against the code, one round |
+| Findings | At most 5 | At most 10 |
+
+Every finding has to name a concrete failure scenario. Each review ends with a footer telling the author how to ask for another review or a deep one.
+
+To ask for a deep review, add the `deep-review` label and then comment `@claude`. Adding the label on its own starts nothing, because the callers don't trigger on `labeled`. While the label is on, every review of the PR is a deep one.
+
+On automatic runs the action skips Dependabot PRs and PRs that only change Markdown or `docs/`. An `@claude` comment, or the label, still reviews them. Set `skip_trivial: 'false'` to turn this off.
+
+An `@claude` run checks out the PR's head commit when the PR comes from the same repo, so Claude reads the code under review rather than the default branch. Fork PRs keep the default-branch checkout, because these runs hold secrets.
+
 ## Action Features
 
 - Configurable per-branch auto-review triggers via `CLAUDE_REVIEW_CONFIG`
 - Uses inline commenting for specific feedback
 - Non-blocking reviews (doesn't prevent merging)
-- Cost control via `--max-turns` (default: 20)
+- Standard or deep review depth, with turn budgets and finding caps (see [Review depth](#review-depth))
 - "Fix this" links in review comments for one-click fixes
 - Release PR detection with standardised summary format
 - Database migration review via `two-database` plugin
@@ -153,7 +173,13 @@ The `pull_request` trigger is unaffected.
 | `github_token` | No | | Token Claude acts as (also its `GH_TOKEN` in Bash), e.g. an app token with permissions the Claude GitHub App lacks. Empty keeps the Claude App's token |
 | `prompt` | No | *(built-in review prompt)* | Custom review prompt (replaces default) |
 | `extra_prompt` | No | | Additional instructions appended to base prompt |
-| `claude_args` | No | `--max-turns 20 --allowedTools ...` | Additional Claude CLI arguments |
+| `claude_args` | No | | Empty: managed review, where the action picks the model, turns and tools. Set: passed through verbatim, with no depth, skips or footer |
+| `standard_model` | No | `claude-sonnet-5-5` | Model for a standard managed review |
+| `deep_model` | No | `claude-opus-5-5` | Model for a deep managed review |
+| `deep_review_label` | No | `deep-review` | PR label that switches a managed review to deep |
+| `skip_trivial` | No | `true` | Skip Dependabot and Markdown/docs-only PRs on automatic runs |
+| `standard_prompt` | No | *(built-in)* | Depth instructions and footer for a standard review |
+| `deep_prompt` | No | *(built-in)* | Depth instructions and footer for a deep review |
 
 **Note:** Provide either `anthropic_api_key` or `claude_code_oauth_token`, not both.
 
