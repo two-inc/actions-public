@@ -241,6 +241,13 @@ inputs:
       unless the label is on.
     required: false
     default: 'true'
+  auto_deep_label:
+    description: >-
+      Label the action adds when triage picks a deep review, so the PR shows
+      why it got one. It is informational: unlike `deep_review_label` it never
+      forces a deep review. Empty turns labelling off.
+    required: false
+    default: 'auto-deep-review'
   triage_model:
     description: 'Model for the depth triage call'
     required: false
@@ -264,6 +271,8 @@ inputs:
       - concurrency: locks, retries, idempotency, queues, background jobs, ordering across services
       - infrastructure that can break a production apply or deploy: Terraform, IAM, cleanup policies, deploy workflows, Helm values for production
       - changed contracts between services: API schemas, events, webhooks
+
+      Judge what this diff changes, not what the repo is about: a repo that handles money still has low-risk PRs. Purely additive changes are **standard** on their own: a new table or nullable column that no code reads or writes yet, a new enum value, an index built concurrently, a new model or constant nothing calls. They become deep only when the same diff also changes code that moves money, grants access or rewrites existing data. A migration that alters, backfills, deletes or locks existing production rows stays deep.
 
       Choose **standard** for everything else: tests-only, copy and UI text, logging, small refactors, docs, dependency bumps, feature-flag toggles in non-production environments, or small changes with a narrow blast radius.
 
@@ -290,7 +299,7 @@ inputs:
     description: 'Review-depth instructions and footer appended to the prompt for a deep managed review'
     required: false
     default: |
-      **Review depth: deep.** A human asked for this by labelling the PR, so spend the effort.
+      **Review depth: deep.** This PR was judged risky (by the triage step or the `deep-review` label), so spend the effort.
 
       Make three separate passes over the whole diff yourself, one lens per pass, in this order. Do not spawn subagents: this job ends the moment you end your turn, so anything still running is lost. In each pass read callers and callees, not just the diff, and note numbered findings with file, line, severity (BLOCKER or BUG) and a concrete failure scenario, leaving out anything you cannot back with one. Start each pass fresh: look for what the earlier passes would not have.
       1. **Site reliability**: failure modes in production. Retries, timeouts, partial failure, idempotency, ordering, races between concurrent requests or workers, deploy and migration ordering, behaviour under load.
@@ -472,6 +481,19 @@ runs:
         fi
         echo "triage=$triage" >> "$GITHUB_OUTPUT"
 
+        # A deep review that already ran on this PR (any depth line or footer
+        # Claude wrote for one) lets triage judge only what changed since.
+        # Match any bot author, not just claude[bot]: a caller's github_token
+        # posts as its own app. Never a user, or a PR author could post that
+        # text in a review of their own and dodge a deep review.
+        if [ "$triage" = true ]; then
+          prior=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/reviews" \
+            --jq '.[] | select(.user.type == "Bot" and ((.body // "") | test("Review depth: deep|Deep review \\(Opus"))) | .commit_id' \
+            | tail -n 1) || prior=""
+          echo "prior_deep_sha=$prior" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$(jq -r '.head.sha' <<<"$pr")" >> "$GITHUB_OUTPUT"
+        fi
+
         # Comment-triggered runs start on the default branch, and upstream's
         # agent mode (used whenever a prompt is set) never switches to the PR.
         # Check out the PR head so Claude reads the code under review, but only
@@ -618,6 +640,10 @@ runs:
         TRIAGE_MODEL: ${{ inputs.triage_model }}
         TRIAGE_PROMPT: ${{ inputs.triage_prompt }}
         CLAUDE_VERSION: ${{ inputs.triage_claude_code_version }}
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        PRIOR_SHA: ${{ steps.plan.outputs.prior_deep_sha }}
+        HEAD_SHA: ${{ steps.plan.outputs.head_sha }}
       run: |
         set -euo pipefail
 
@@ -631,6 +657,31 @@ runs:
         work=$(mktemp -d)
         cp /tmp/pr-context/pr.json /tmp/pr-context/diff.patch "$work/"
         prompt=${TRIAGE_PROMPT//\/tmp\/pr-context/$work}
+
+        # After a deep review, only what changed since needs to earn another
+        # one. The compare is trusted only when the old commit is still an
+        # ancestor of the head; after a rebase or force-push it would mix in
+        # the base branch's changes, so triage then judges the whole diff.
+        since_used=false
+        if [ -n "$PRIOR_SHA" ]; then
+          short=${PRIOR_SHA:0:7}
+          status=$(gh api "repos/${REPO}/compare/${PRIOR_SHA}...${HEAD_SHA}" --jq '.status' 2>/dev/null || echo unknown)
+          if [ "$status" = identical ]; then
+            : > "$work/since.patch"
+            since_used=true
+          elif [ "$status" = ahead ] && gh api "repos/${REPO}/compare/${PRIOR_SHA}...${HEAD_SHA}" \
+              -H "Accept: application/vnd.github.v3.diff" > "$work/since.patch" 2>/dev/null; then
+            since_used=true
+          fi
+          if [ "$since_used" = true ]; then
+            prompt+=$'\n\n'"A deep review of this PR already ran at commit ${short}. \`$work/since.patch\` holds only the changes pushed since then (it may be empty). Choose **deep** only if those changes are themselves risky by the rules above; otherwise choose **standard**, because the earlier deep review already covered the rest. Base the reason on since.patch."
+          else
+            prompt+=$'\n\n'"A deep review of this PR already ran at commit ${short}, but the history has been rewritten since, so the new changes cannot be isolated. Judge the full diff as usual."
+          fi
+        fi
+        echo "since_used=$since_used" >> "$GITHUB_OUTPUT"
+        unset GH_TOKEN
+
         schema='{"type":"object","properties":{"depth":{"type":"string","enum":["standard","deep"]},"category":{"type":"string","enum":["money","access","data","concurrency","infra","contract","low_risk"]},"reason":{"type":"string"}},"required":["depth","category","reason"]}'
 
         # Only the credential the caller gave; an empty ANTHROPIC_API_KEY would
@@ -664,6 +715,8 @@ runs:
         TRIAGED: ${{ steps.plan.outputs.triage }}
         TRIAGE_OUTCOME: ${{ steps.triage.outcome }}
         TRIAGE_JSON: ${{ steps.triage.outputs.verdict }}
+        SINCE_USED: ${{ steps.triage.outputs.since_used }}
+        PRIOR_SHA: ${{ steps.plan.outputs.prior_deep_sha }}
         CHECKOUT_NOTE: ${{ steps.plan.outputs.checkout_note }}
         DEEP_LABEL: ${{ inputs.deep_review_label }}
         STANDARD_MODEL: ${{ inputs.standard_model }}
@@ -674,6 +727,7 @@ runs:
         set -euo pipefail
 
         deep=false
+        triage_deep=false
         why="standard, no PR to triage"
         if [ "$LABEL_DEEP" = true ]; then
           deep=true
@@ -698,9 +752,13 @@ runs:
             low_risk) what="a low-risk change" ;;
             *) what="" ;;
           esac
+          since=""
+          if [ "$SINCE_USED" = true ]; then
+            since=" in the changes since the deep review at ${PRIOR_SHA:0:7}"
+          fi
           case "$depth" in
-            deep) deep=true; why="deep, because triage found ${what:-a risky change}" ;;
-            standard) why="standard, because triage found ${what:-a low-risk change}" ;;
+            deep) deep=true; triage_deep=true; why="deep, because triage found ${what:-a risky change}${since}" ;;
+            standard) why="standard, because triage found ${what:-a low-risk change}${since}" ;;
             *)
               echo "::warning::Review depth triage failed (outcome: ${TRIAGE_OUTCOME:-unknown}); using a standard review."
               why="standard, because triage failed"
@@ -708,6 +766,7 @@ runs:
           esac
         fi
         echo "deep=$deep" >> "$GITHUB_OUTPUT"
+        echo "triage_deep=$triage_deep" >> "$GITHUB_OUTPUT"
         echo "::notice::Review depth: $why"
 
         tools="Read,Grep,Glob,Write,mcp__github__create_and_submit_pull_request_review,mcp__github__add_issue_comment,mcp__github_inline_comment__create_inline_comment,Bash(cat *),Bash(grep *),Bash(gh api graphql:*),Bash(gh api repos/*),Bash(python *validate_migration*)"
@@ -729,6 +788,27 @@ runs:
           echo "Directly above the footer, add this line verbatim: <sub>Review depth: ${why}</sub>"
           echo "$delim"
         } >> "$GITHUB_OUTPUT"
+
+    # Shows on the PR that triage, not a human, picked the deep review, and
+    # makes the deep share countable. Best-effort: a missing permission or API
+    # error never blocks the review. Callers don't trigger on `labeled`, so
+    # this starts no new run.
+    - name: Label triage-picked deep review
+      if: ${{ steps.decide.outputs.triage_deep == 'true' && inputs.auto_deep_label != '' }}
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        LABEL: ${{ inputs.auto_deep_label }}
+        DEEP_LABEL: ${{ inputs.deep_review_label }}
+      run: |
+        set -euo pipefail
+        # Create it with a colour and description the first time; 422 means it exists.
+        gh api "repos/${REPO}/labels" -f name="$LABEL" -f color=D4C5F9 \
+          -f description="Triage picked a deep Claude review. Informational: add ${DEEP_LABEL} to force one" >/dev/null 2>&1 || true
+        gh api "repos/${REPO}/issues/${PR_NUMBER}/labels" -f "labels[]=$LABEL" >/dev/null
 
     - name: Run Claude Code Review
       id: claude-review

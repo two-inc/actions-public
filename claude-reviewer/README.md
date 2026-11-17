@@ -136,7 +136,11 @@ A managed review (any caller that leaves `claude_args` empty) runs at one of two
 
 Every finding has to name a concrete failure scenario. Each review ends with a footer telling the author how to ask for another review or a deep one, and a line saying which depth ran and why.
 
-**Picking the depth.** Unless the PR has the label, a triage call to `claude-haiku-5-5` runs first. It reads the PR description and diff and returns `deep` or `standard` with a one-sentence reason. It picks deep when a bug could reach production and hurt money, access or data: payments and ledgers, auth and sessions, migrations, concurrency, Terraform/IAM and deploy workflows, or cross-service contracts. The call is read-only, runs for at most 4 turns, and costs about a cent. If it fails for any reason, the review falls back to standard, so a broken triage never costs a deep run. Set `auto_depth: 'false'` to skip triage and always run standard unless the label is on.
+**Picking the depth.** Unless the PR has the label, a triage call to `claude-haiku-5-5` runs first. It reads the PR description and diff and returns `deep` or `standard` with a one-sentence reason. It picks deep when a bug could reach production and hurt money, access or data: payments and ledgers, auth and sessions, migrations, concurrency, Terraform/IAM and deploy workflows, or cross-service contracts. It judges what the diff changes, not what the repo is about: purely additive changes (a new table or column nothing uses yet, a new enum value, a concurrent index) get a standard review unless the same diff also changes code that moves money, grants access or rewrites existing data. The call is read-only, runs for at most 4 turns, and costs about a cent. If it fails for any reason, the review falls back to standard, so a broken triage never costs a deep run. Set `auto_depth: 'false'` to skip triage and always run standard unless the label is on.
+
+**After a deep review.** PRs into main or master are reviewed again on every push. Once Claude has posted a deep review on a PR, triage is told the commit it ran at and also reads the changes pushed since then. It picks deep again only if those new changes are risky on their own, so a risky PR with many follow-up pushes pays for one deep review, not one per push. After a rebase or force-push the new changes can't be isolated, so triage judges the whole diff as usual.
+
+**The `auto-deep-review` label.** When triage picks deep, the action adds the `auto-deep-review` label (creating it the first time), so the PR shows why it got the deep pass and the deep share can be counted. It is informational only: it never forces a deep review, and removing it changes nothing. Set `auto_deep_label: ''` to turn labelling off. The workflow template's `issues: write` and `pull-requests: write` permissions cover it, and a labelling failure never blocks the review.
 
 In a local backtest the triage prompt sent all four PRs with a missed P1 to deep and the clear low-risk ones to standard. Deep caught 3 of those 4 P1s and standard caught none, so triage is what puts the expensive review where it pays.
 
@@ -182,6 +186,7 @@ An `@claude` run checks out the PR's head commit when the PR comes from the same
 | `deep_model` | No | `claude-opus-5-5` | Model for a deep managed review |
 | `deep_review_label` | No | `deep-review` | PR label that forces a managed review to deep, skipping triage |
 | `auto_depth` | No | `true` | Run the Haiku triage call to pick standard or deep |
+| `auto_deep_label` | No | `auto-deep-review` | Informational label added when triage picks deep; empty turns it off |
 | `triage_model` | No | `claude-haiku-5-5` | Model for the triage call |
 | `triage_prompt` | No | *(built-in)* | Triage prompt; must answer `{depth: standard\|deep, reason}` |
 | `skip_trivial` | No | `true` | Skip Dependabot and Markdown/docs-only PRs on automatic runs |
