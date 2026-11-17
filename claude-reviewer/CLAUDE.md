@@ -32,7 +32,10 @@ Single-file action (`action.yml`) - no build step, no JS/TS. Thin passthrough to
   `none` for them (verified), so checking it would break every bot-triggered
   review. A bot identity cannot be assumed by an outside account, and
   `allowed_bots` is the filter for which bots count. Upstream does the same
-- **Selective commenting** - prompt is heavily tuned to only flag critical issues (security, bugs, data loss, unsafe migrations). Maximum 3 comments per PR unless genuine security issues
+- **Two review depths, picked by the `plan` step** - standard (Sonnet, 30 turns, at most 5 findings) on every managed review, deep (Opus, 60 turns, three parallel lens subagents, at most 10 findings) when the PR carries the `deep-review` label. Every finding must name a concrete failure scenario, and Claude reads callers beyond the diff. Each review ends with a footer telling the author how to ask for another review or a deep one. The deep prompt is a one-round CI variant of the `two-review-adversarial` skill, which itself is interactive-only and must not run from CI
+- **Managed vs custom callers** - an empty `claude_args` means a managed PR review (depth, skips, footer). Any caller that sets `claude_args` (backtests, sweeps) gets the plain passthrough, so those jobs keep their own model and turn budget
+- **Trivial-PR skips live in the action** - Dependabot PRs and Markdown/docs-only PRs are skipped on automatic runs. This is the one exception to "filtering lives in consuming workflows": it depends on the PR's author and files, which the callers' `if:` can't see without an API call, and putting it here avoids editing ~30 workflows
+- **Comment-triggered runs check out the PR head** - upstream's agent mode (always used, because we pass a prompt) never switches branch, so without this an `@claude` run reads the default branch. Same-repo PRs only: these runs hold secrets
 - **Release PR detection** - auto-detects release PRs and creates summaries instead of reviews
 - **Duplicate avoidance** - reads all existing comments before posting, never duplicates
 
@@ -77,8 +80,12 @@ fromJSON(vars.CLAUDE_REVIEW_CONFIG)[format('{0}:{1}', github.base_ref, github.ev
   repos.
 - **CLAUDE_REVIEW_CONFIG stays flat** — flat `branch:event` JSON keys enable
   pure expression evaluation in consuming workflows; no wildcards or
-  fallbacks, explicit config only, and all filtering lives in consuming
-  workflows, never in action.yml (keep it a pure passthrough).
+  fallbacks, explicit config only. Branch and event filtering lives in
+  consuming workflows, never in action.yml; the only filtering in the action
+  is the trivial-PR skip above.
+- **Adding the label does not start a review** - callers don't trigger on
+  `labeled`. Add `deep-review`, then comment `@claude` (or push, on PRs into
+  main/master).
 
 ## Adding this action to a new repo
 
