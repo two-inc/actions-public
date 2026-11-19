@@ -253,7 +253,7 @@ inputs:
     required: false
     default: 'claude-haiku-5-5'
   triage_claude_code_version:
-    description: 'Claude Code CLI version the triage step installs (it runs the CLI directly, outside claude-code-action)'
+    description: 'Fallback Claude Code CLI version for the triage step, used only when the version claude-code-action pins cannot be read from its copy on the runner'
     required: false
     default: '2.1.326'
   triage_prompt:
@@ -647,11 +647,29 @@ runs:
       run: |
         set -euo pipefail
 
+        # Install the version claude-code-action pins, read from its copy on
+        # the runner, and hand the binary to the review step so the job
+        # downloads Claude Code once, not twice (each copy is about 200 MB of
+        # NAT traffic on self-hosted runners). If the pin can't be read, keep
+        # the old behaviour: triage installs its own version and the action
+        # installs its own, so the review never runs a version it didn't pick.
+        # Remote actions, nested ones included, live under the runner's
+        # _actions dir (a sibling of RUNNER_WORKSPACE). A local
+        # `uses: ./claude-reviewer` puts GITHUB_ACTION_PATH in the checkout,
+        # so don't derive the path from that.
+        cca_run="$(dirname "$RUNNER_WORKSPACE")/_actions/anthropics/claude-code-action/v1/src/entrypoints/run.ts"
+        pinned=$(sed -nE 's/^[[:space:]]*const claudeCodeVersion = "([0-9]+\.[0-9]+\.[0-9]+)";.*/\1/p' "$cca_run" 2>/dev/null | head -n1 || true)
+        if [ -n "$pinned" ]; then CLAUDE_VERSION=$pinned; fi
+        echo "Triage Claude Code version: $CLAUDE_VERSION (claude-code-action pin: ${pinned:-not found})"
+
         bin="$RUNNER_TEMP/claude-triage-bin"
         if [ ! -x "$bin/claude" ]; then
           curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_VERSION" >/dev/null
           mkdir -p "$bin"
           cp "$HOME/.local/bin/claude" "$bin/claude"
+        fi
+        if [ -n "$pinned" ] && "$bin/claude" --version 2>/dev/null | grep -qF "$pinned"; then
+          echo "claude_path=$bin/claude" >> "$GITHUB_OUTPUT"
         fi
 
         work=$(mktemp -d)
@@ -828,6 +846,10 @@ runs:
         allowed_bots: ${{ inputs.allowed_bots }}
         github_token: ${{ inputs.github_token }}
         show_full_output: ${{ inputs.show_full_output }}
+        # Set only when triage installed the exact version this action pins,
+        # so the job downloads Claude Code once. Empty means the action
+        # installs its own as usual.
+        path_to_claude_code_executable: ${{ steps.triage.outputs.claude_path }}
         prompt: |
           ${{ inputs.prompt }}
 
