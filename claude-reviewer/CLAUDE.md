@@ -50,7 +50,7 @@ Single-file action (`action.yml`) - no build step, no JS/TS. Thin passthrough to
 
 ## Plugins
 
-- **Marketplace**: `https://github.com/two-inc/agent-plugins.git` (private, needs org-scoped GitHub token)
+- **Marketplace**: `https://github.com/two-inc/agent-skills.git` (private, needs org-scoped GitHub token)
 - **Default plugin**: `two-database` - provides Alembic/PostgreSQL migration review via `alembic-postgres-migration-helper` skill and `validate_migration.py` AST-based validation script
 - Plugin names use format `plugin-name` (simple) or `plugin-name@marketplace-name` (explicit)
 
