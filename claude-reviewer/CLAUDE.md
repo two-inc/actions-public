@@ -68,9 +68,10 @@ fromJSON(vars.CLAUDE_REVIEW_CONFIG)[format('{0}:{1}', github.base_ref, github.ev
 
 - **Marketplace URLs must be full HTTPS** — the `org/repo` shorthand does NOT
   work in `plugin_marketplaces`; use `https://github.com/two-inc/agent-skills.git`.
-- **Private marketplace auth**: the clone needs a GitHub App token
-  (`actions/create-github-app-token@v1` with `TWO_INC_APP_ID` /
-  `TWO_INC_APP_PRIVATE_KEY`) applied via a git URL rewrite:
+- **Private marketplace auth**: the clone needs a GitHub App token, minted
+  read-only and scoped (`repositories:`) to the caller-owned repos named in
+  `plugin_marketplaces`, and skipped when there are none. A read-only App is
+  enough. It is applied via a git URL rewrite:
   `git config --global url."https://x-access-token:TOKEN@github.com/".insteadOf "https://github.com/"`.
 - **`use_sticky_comment` stays false** — sticky comments conflict with the
   "do nothing if already approved" prompt logic.

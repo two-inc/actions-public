@@ -177,7 +177,7 @@ An `@claude` run checks out the PR's head commit when the PR comes from the same
 | `exclude_comments_by_actor` | No | | Comma-separated actor usernames to exclude from comment context |
 | `github_app_client_id` | No | | GitHub App client ID for cross-repo access (e.g. private plugin marketplaces) |
 | `github_app_id` | No | | DEPRECATED — use `github_app_client_id` instead. Numeric GitHub App ID, kept as a backward-compatible alias. |
-| `github_app_private_key` | No | | GitHub App private key for cross-repo access |
+| `github_app_private_key` | No | | GitHub App private key for cross-repo access. The token minted from it is read-only, scoped to the caller-owned repos in `plugin_marketplaces`, and not minted at all when there are none. A read-only App is enough |
 | `github_token` | No | | Token Claude acts as (also its `GH_TOKEN` in Bash), e.g. an app token with permissions the Claude GitHub App lacks. Empty keeps the Claude App's token |
 | `prompt` | No | *(built-in review prompt)* | Custom review prompt (replaces default) |
 | `extra_prompt` | No | | Additional instructions appended to base prompt |

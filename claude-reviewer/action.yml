@@ -517,25 +517,51 @@ runs:
         fetch-depth: 1
         ref: ${{ steps.plan.outputs.ref }}
 
+    # The App token is only used to clone private plugin marketplaces, so it is
+    # scoped to the caller-owned marketplace repos that aren't public. With none, no token is
+    # minted at all, since a token without `repositories` covers every repo the
+    # App can see.
+    - name: List private marketplace repos
+      if: ${{ steps.plan.outputs.run == 'true' }}
+      id: marketplace-repos
+      shell: bash
+      env:
+        MARKETPLACES: ${{ inputs.plugin_marketplaces }}
+        OWNER: ${{ github.repository_owner }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        # Public marketplaces clone without a token, and listing one the App
+        # isn't installed on would fail the whole token request, so keep only
+        # repos that aren't visibly public (a private repo 404s for this token).
+        names=""
+        for repo in $(printf '%s\n' "$MARKETPLACES" \
+            | sed -nE "s#^[[:space:]]*https://github.com/${OWNER}/([^/[:space:]]+)(\.git)?/?[[:space:]]*\$#\1#p" \
+            | sed 's/\.git$//' | sort -u); do
+          if [ "$(gh api "repos/${OWNER}/${repo}" --jq .private 2>/dev/null)" = "false" ]; then
+            continue
+          fi
+          names="${names:+${names},}${repo}"
+        done
+        echo "names=${names}" >> "$GITHUB_OUTPUT"
     - name: Generate GitHub App token
-      if: ${{ (steps.plan.outputs.run == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '') && inputs.github_app_client_id != '' }}
+      if: ${{ (steps.plan.outputs.run == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '') && inputs.github_app_client_id != '' && steps.marketplace-repos.outputs.names != '' }}
       id: app-token-client
       uses: actions/create-github-app-token@v3
       with:
         client-id: ${{ inputs.github_app_client_id }}
         private-key: ${{ inputs.github_app_private_key }}
         owner: ${{ github.repository_owner }}
-        # Only used to clone private plugin marketplaces.
+        repositories: ${{ steps.marketplace-repos.outputs.names }}
         permission-contents: read
     - name: Generate GitHub App token (numeric app ID, deprecated)
-      if: ${{ (steps.plan.outputs.run == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '') && inputs.github_app_client_id == '' && inputs.github_app_id != '' }}
+      if: ${{ (steps.plan.outputs.run == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '') && inputs.github_app_client_id == '' && inputs.github_app_id != '' && steps.marketplace-repos.outputs.names != '' }}
       id: app-token-legacy
       uses: actions/create-github-app-token@v3
       with:
         app-id: ${{ inputs.github_app_id }}
         private-key: ${{ inputs.github_app_private_key }}
         owner: ${{ github.repository_owner }}
-        # Only used to clone private plugin marketplaces.
+        repositories: ${{ steps.marketplace-repos.outputs.names }}
         permission-contents: read
     - name: Use whichever GitHub App token was minted
       if: ${{ steps.plan.outputs.run == 'true' && (inputs.github_app_client_id != '' || inputs.github_app_id != '') && inputs.github_app_private_key != '' }}
