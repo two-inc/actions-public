@@ -1,0 +1,54 @@
+name: resolve-base-images CI
+
+# Path-filtered so this only runs when the resolve-base-images action changes.
+
+on:
+    pull_request:
+        paths:
+            - "resolve-base-images/**"
+            - ".github/workflows/ci-resolve-base-images.yaml"
+    push:
+        branches: [main]
+        paths:
+            - "resolve-base-images/**"
+            - ".github/workflows/ci-resolve-base-images.yaml"
+
+concurrency:
+    group: resolve-base-images-ci-${{ github.event.pull_request.number || github.run_id }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        steps:
+            - uses: actions/checkout@v6
+            - name: Test resolve.sh
+              run: resolve-base-images/test.sh
+
+    e2e:
+        runs-on: ubuntu-latest
+        timeout-minutes: 5
+        steps:
+            - uses: actions/checkout@v6
+            - name: Write a fixture Dockerfile
+              run: printf 'ARG base_image="python:3.12-slim"\nARG airflow_image=apache/airflow\nFROM ${base_image}\n' > /tmp/Dockerfile.fixture
+            - id: resolve
+              uses: ./resolve-base-images
+              with:
+                  dockerfile: /tmp/Dockerfile.fixture
+                  args: base_image airflow_image
+                  cache: europe-north1-docker.pkg.dev/two-artifacts/docker
+            - name: Check the outputs
+              env:
+                  BASE: ${{ steps.resolve.outputs.base_image }}
+                  ARGS: ${{ steps.resolve.outputs.build-args }}
+                  FLAGS: ${{ steps.resolve.outputs.build-arg-flags }}
+              run: |
+                  want="europe-north1-docker.pkg.dev/two-artifacts/docker/library/python:3.12-slim"
+                  [ "$BASE" = "$want" ] || { echo "base_image: got $BASE"; exit 1; }
+                  printf '%s\n' "$ARGS" | grep -qx "airflow_image=europe-north1-docker.pkg.dev/two-artifacts/docker/apache/airflow"
+                  case "$FLAGS" in *"--build-arg base_image=$want"*) ;; *) echo "flags: $FLAGS"; exit 1 ;; esac

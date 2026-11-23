@@ -1,0 +1,63 @@
+name: Resolve cached base images
+description: >
+  Read each named ARG's default from a Dockerfile and turn it into the same
+  image pulled through the two-artifacts Docker Hub pull-through cache, so a
+  Dockerfile can keep its Docker Hub default for local builds while CI passes
+  the cached path as a build-arg. The Dockerfile stays the only place the tag
+  or digest is written. Fails if an ARG has no default.
+
+inputs:
+  dockerfile:
+    description: Path to the Dockerfile, relative to the workspace.
+    required: false
+    default: Dockerfile
+  args:
+    description: ARG names to resolve, separated by spaces or newlines.
+    required: false
+    default: base_image
+  cache:
+    description: >
+      Prefix of the Docker Hub pull-through cache, without a trailing slash.
+      Pass the GAR_REGISTRY and GAR_PROJECT org variables joined with /docker,
+      for example europe-north1-docker.pkg.dev/two-artifacts/docker.
+    required: true
+  version-file:
+    description: >
+      Optional file holding the runtime version the image must match, such as
+      .nvmrc. When set, the step fails unless the tag of version-arg's image
+      is that version, or starts with it followed by - or . (24 matches
+      24-alpine and 24.22.1-alpine; 24.22.1 matches 24.22.1-alpine only).
+    required: false
+    default: ""
+  version-arg:
+    description: The ARG whose image tag is checked against version-file.
+    required: false
+    default: base_image
+
+outputs:
+  build-args:
+    description: >
+      One NAME=cached-image line per ARG, ready to drop into the build-args
+      input of docker/build-push-action.
+    value: ${{ steps.resolve.outputs.build-args }}
+  build-arg-flags:
+    description: >
+      The same values as --build-arg NAME=cached-image flags on one line, for
+      a docker build or docker buildx build command.
+    value: ${{ steps.resolve.outputs.build-arg-flags }}
+  base_image:
+    description: The resolved base_image, when base_image is one of the args.
+    value: ${{ steps.resolve.outputs.base_image }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      env:
+        DOCKERFILE: ${{ inputs.dockerfile }}
+        ARGS: ${{ inputs.args }}
+        CACHE: ${{ inputs.cache }}
+        VERSION_FILE: ${{ inputs.version-file }}
+        VERSION_ARG: ${{ inputs.version-arg }}
+      run: "${GITHUB_ACTION_PATH}/resolve.sh"
