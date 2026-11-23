@@ -11,11 +11,12 @@ else lives in the private `two-inc/actions`.
 
 ## Actions
 
-| Action                                 | Purpose                                           |
-| -------------------------------------- | ------------------------------------------------- |
-| [`pre-commit`](./pre-commit)           | Run pre-commit hooks and post a sticky PR comment |
-| [`claude-reviewer`](./claude-reviewer) | Run Claude Code review on pull requests           |
-| [`back-merge`](./back-merge)           | Merge a branch back after a release               |
+| Action                                         | Purpose                                                  |
+| ---------------------------------------------- | -------------------------------------------------------- |
+| [`pre-commit`](./pre-commit)                   | Run pre-commit hooks and post a sticky PR comment        |
+| [`claude-reviewer`](./claude-reviewer)         | Run Claude Code review on pull requests                  |
+| [`back-merge`](./back-merge)                   | Merge a branch back after a release                      |
+| [`resolve-base-images`](./resolve-base-images) | Pull Dockerfile base images through the Docker Hub cache |
 
 ## Usage
 
@@ -23,6 +24,7 @@ else lives in the private `two-inc/actions`.
 - uses: two-inc/actions-public/pre-commit@main
 - uses: two-inc/actions-public/claude-reviewer@main
 - uses: two-inc/actions-public/back-merge@main
+- uses: two-inc/actions-public/resolve-base-images@main
 ```
 
 See each action's own `README.md` for inputs.
