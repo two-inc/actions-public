@@ -675,8 +675,7 @@ runs:
 
         # Install the version claude-code-action pins, read from its copy on
         # the runner, and hand the binary to the review step so the job
-        # downloads Claude Code once, not twice (each copy is about 200 MB of
-        # NAT traffic on self-hosted runners). If the pin can't be read, keep
+        # fetches Claude Code once, not twice. If the pin can't be read, keep
         # the old behaviour: triage installs its own version and the action
         # installs its own, so the review never runs a version it didn't pick.
         # Remote actions, nested ones included, live under the runner's
@@ -688,10 +687,56 @@ runs:
         if [ -n "$pinned" ]; then CLAUDE_VERSION=$pinned; fi
         echo "Triage Claude Code version: $CLAUDE_VERSION (claude-code-action pin: ${pinned:-not found})"
 
+        # Fetch that one binary and check it against Anthropic's manifest.
+        # install.sh is the last resort: it downloads the latest release first
+        # and then the pinned one (about 400 MB each without zstd), so a job
+        # that used it pulled about 780 MB through Cloud NAT. On the delta
+        # runners the binary comes from the two-artifacts npm pull-through
+        # cache instead (@anthropic-ai/claude-code-<platform> holds the same
+        # file), on Private Google Access with the pod's own metadata token.
+        # Elsewhere, or if that fails, it comes straight from
+        # downloads.claude.ai: one copy, not two.
         bin="$RUNNER_TEMP/claude-triage-bin"
+        mkdir -p "$bin"
+        dist=https://downloads.claude.ai/claude-code-releases
+        # Only glibc Linux takes the direct path; macOS, musl and anything else
+        # leave platform empty and go to install.sh, which picks its own build.
+        platform=""
+        if [ "$(uname -s)" = Linux ] && ! ls /lib/libc.musl-*.so.1 >/dev/null 2>&1; then
+          case "$(uname -m)" in
+            x86_64|amd64) platform=linux-x64 ;;
+            aarch64|arm64) platform=linux-arm64 ;;
+          esac
+        fi
+        checksum=""
+        if [ -n "$platform" ]; then
+          checksum=$(curl -fsS --max-time 10 "$dist/$CLAUDE_VERSION/manifest.json" 2>/dev/null |
+            jq -r --arg p "$platform" '.platforms[$p].checksum // empty' 2>/dev/null || true)
+        fi
+        verified() { [ -n "$checksum" ] && echo "$checksum  $1" | sha256sum -c --quiet >/dev/null 2>&1; }
+        if [ ! -x "$bin/claude" ] && [ -n "$checksum" ]; then
+          token=$(curl -fsS --max-time 5 -H 'Metadata-Flavor: Google' \
+            http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token 2>/dev/null |
+            jq -r '.access_token // empty' 2>/dev/null || true)
+          pkg="claude-code-$platform"
+          tgz="$RUNNER_TEMP/$pkg.tgz"
+          if [ -n "$token" ] && curl -fsSL --max-time 300 -H "Authorization: Bearer $token" -o "$tgz" \
+              "https://europe-north1-npm.pkg.dev/two-artifacts/npm/@anthropic-ai/$pkg/-/$pkg-$CLAUDE_VERSION.tgz" 2>/dev/null &&
+            tar -xzf "$tgz" -C "$bin" --strip-components=1 package/claude 2>/dev/null && verified "$bin/claude"; then
+            echo "Claude Code $CLAUDE_VERSION from the two-artifacts npm cache"
+          elif curl -fsSL --max-time 300 -o "$bin/claude" "$dist/$CLAUDE_VERSION/$platform/claude" 2>/dev/null &&
+            verified "$bin/claude"; then
+            echo "Claude Code $CLAUDE_VERSION from downloads.claude.ai"
+          else
+            rm -f "$bin/claude"
+          fi
+          rm -f "$tgz"
+          unset token
+          if [ -f "$bin/claude" ]; then chmod +x "$bin/claude"; fi
+        fi
         if [ ! -x "$bin/claude" ]; then
+          echo "Claude Code $CLAUDE_VERSION through install.sh"
           curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_VERSION" >/dev/null
-          mkdir -p "$bin"
           cp "$HOME/.local/bin/claude" "$bin/claude"
         fi
         if [ -n "$pinned" ] && "$bin/claude" --version 2>/dev/null | grep -qF "$pinned"; then
