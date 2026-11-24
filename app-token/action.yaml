@@ -1,0 +1,192 @@
+name: Org GitHub App token
+description: >-
+  Mint a token for the org GitHub App. On a push, dispatch, schedule or
+  workflow_run run in a job with `id-token: write`, the private key comes from Secret Manager in
+  two-artifacts, readable only by gha-app-key-reader from reviewed deploy
+  branches (ISEC-853). Anything else falls back to the app-private-key input
+  while that input is still passed.
+inputs:
+  client-id:
+    description: GitHub App client ID
+    required: false
+    default: ''
+  app-id:
+    description: DEPRECATED. Numeric GitHub App ID, used only with app-private-key.
+    required: false
+    default: ''
+  app-private-key:
+    description: Fallback private key, used only when Secret Manager can't be read.
+    required: false
+    default: ''
+  owner:
+    description: Installation owner
+    required: false
+    default: two-inc
+  repositories:
+    description: Comma or newline separated repos to scope the token to. Empty means every repo the App can see.
+    required: false
+    default: ''
+  permission-contents:
+    description: contents permission for the token (read or write)
+    required: false
+    default: ''
+  permission-pull-requests:
+    description: pull-requests permission for the token
+    required: false
+    default: ''
+  permission-members:
+    description: members permission for the token
+    required: false
+    default: ''
+  permission-workflows:
+    description: workflows permission for the token
+    required: false
+    default: ''
+  permission-issues:
+    description: issues permission for the token
+    required: false
+    default: ''
+  permission-checks:
+    description: checks permission for the token
+    required: false
+    default: ''
+  permission-statuses:
+    description: statuses permission for the token
+    required: false
+    default: ''
+  permission-actions:
+    description: actions permission for the token
+    required: false
+    default: ''
+  permission-vulnerability-alerts:
+    description: vulnerability-alerts permission for the token
+    required: false
+    default: ''
+outputs:
+  token:
+    description: The minted token, empty if none could be minted
+    value: ${{ steps.pick.outputs.token }}
+  app-slug:
+    description: The App's slug
+    value: ${{ steps.pick.outputs.app-slug }}
+  source:
+    description: "Where the key came from: secret-manager, input, or empty"
+    value: ${{ steps.pick.outputs.source }}
+
+runs:
+  using: composite
+  steps:
+    # Only push, dispatch and schedule runs, plus workflow_run for the plugin
+    # releases infra lists, can mint the reader, so skip it for pull requests
+    # and the rest. An unlisted workflow_run is refused and falls back.
+    - name: Check for an OIDC token
+      id: oidc
+      shell: bash
+      env:
+        CLIENT_ID: ${{ inputs.client-id }}
+      run: |
+        case "${GITHUB_EVENT_NAME}" in push|workflow_dispatch|schedule|workflow_run) mainline=true ;; *) mainline=false ;; esac
+        if [ "$mainline" = true ] && [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] && [ -n "${CLIENT_ID}" ]; then
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "provider=${GITHUB_REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
+        fi
+    - name: Authenticate as the App key reader
+      id: gcp
+      if: steps.oidc.outputs.available == 'true'
+      continue-on-error: true
+      uses: google-github-actions/auth@v3
+      with:
+        workload_identity_provider: projects/1077288542082/locations/global/workloadIdentityPools/github-actions-runner/providers/${{ steps.oidc.outputs.provider }}
+        service_account: gha-app-key-reader@two-artifacts.iam.gserviceaccount.com
+        token_format: access_token
+        # Leave the caller's own Google credentials and project env alone.
+        create_credentials_file: false
+        export_environment_variables: false
+    - name: Read the App key from Secret Manager
+      id: sm
+      if: steps.gcp.outcome == 'success'
+      continue-on-error: true
+      shell: bash
+      env:
+        ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
+      run: |
+        set -euo pipefail
+        key=$(curl -fsS --retry 3 -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+          "https://secretmanager.googleapis.com/v1/projects/two-artifacts/secrets/two-inc-app-private-key/versions/latest:access" \
+          | jq -r '.payload.data' | base64 -d)
+        while IFS= read -r line; do
+          [ -n "$line" ] && echo "::add-mask::${line}"
+        done <<< "$key"
+        delim="EOF_KEY_${GITHUB_RUN_ID}_${RANDOM}${RANDOM}"
+        { echo "key<<${delim}"; echo "$key"; echo "${delim}"; } >> "$GITHUB_OUTPUT"
+    - name: Mint the token (Secret Manager key)
+      id: sm-token
+      if: steps.sm.outputs.key != ''
+      continue-on-error: true
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ steps.sm.outputs.key }}
+        owner: ${{ inputs.owner }}
+        repositories: ${{ inputs.repositories }}
+        permission-contents: ${{ inputs.permission-contents }}
+        permission-pull-requests: ${{ inputs.permission-pull-requests }}
+        permission-members: ${{ inputs.permission-members }}
+        permission-workflows: ${{ inputs.permission-workflows }}
+        permission-issues: ${{ inputs.permission-issues }}
+        permission-checks: ${{ inputs.permission-checks }}
+        permission-statuses: ${{ inputs.permission-statuses }}
+        permission-actions: ${{ inputs.permission-actions }}
+        permission-vulnerability-alerts: ${{ inputs.permission-vulnerability-alerts }}
+    - name: Mint the token (app-private-key input)
+      id: input-token
+      if: steps.sm-token.outputs.token == '' && inputs.client-id != '' && inputs.app-private-key != ''
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.app-private-key }}
+        owner: ${{ inputs.owner }}
+        repositories: ${{ inputs.repositories }}
+        permission-contents: ${{ inputs.permission-contents }}
+        permission-pull-requests: ${{ inputs.permission-pull-requests }}
+        permission-members: ${{ inputs.permission-members }}
+        permission-workflows: ${{ inputs.permission-workflows }}
+        permission-issues: ${{ inputs.permission-issues }}
+        permission-checks: ${{ inputs.permission-checks }}
+        permission-statuses: ${{ inputs.permission-statuses }}
+        permission-actions: ${{ inputs.permission-actions }}
+        permission-vulnerability-alerts: ${{ inputs.permission-vulnerability-alerts }}
+    - name: Mint the token (numeric app ID, deprecated)
+      id: legacy-token
+      if: steps.sm-token.outputs.token == '' && inputs.client-id == '' && inputs.app-id != '' && inputs.app-private-key != ''
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.app-id }}
+        private-key: ${{ inputs.app-private-key }}
+        owner: ${{ inputs.owner }}
+        repositories: ${{ inputs.repositories }}
+        permission-contents: ${{ inputs.permission-contents }}
+        permission-pull-requests: ${{ inputs.permission-pull-requests }}
+        permission-members: ${{ inputs.permission-members }}
+        permission-workflows: ${{ inputs.permission-workflows }}
+        permission-issues: ${{ inputs.permission-issues }}
+        permission-checks: ${{ inputs.permission-checks }}
+        permission-statuses: ${{ inputs.permission-statuses }}
+        permission-actions: ${{ inputs.permission-actions }}
+        permission-vulnerability-alerts: ${{ inputs.permission-vulnerability-alerts }}
+    - name: Report which App key source is used
+      id: pick
+      shell: bash
+      env:
+        SM_TOKEN: ${{ steps.sm-token.outputs.token }}
+        SM_SLUG: ${{ steps.sm-token.outputs.app-slug }}
+        IN_TOKEN: ${{ steps.input-token.outputs.token || steps.legacy-token.outputs.token }}
+        IN_SLUG: ${{ steps.input-token.outputs.app-slug || steps.legacy-token.outputs.app-slug }}
+      run: |
+        if [ -n "$SM_TOKEN" ]; then
+          echo "::notice title=App key::read from Secret Manager"
+          { echo "token=${SM_TOKEN}"; echo "app-slug=${SM_SLUG}"; echo "source=secret-manager"; } >> "$GITHUB_OUTPUT"
+        elif [ -n "$IN_TOKEN" ]; then
+          echo "::warning title=App key::fell back to the app-private-key input. Give this job id-token: write, and check its branch is listed in infra's app_key_deploy_branches"
+          { echo "token=${IN_TOKEN}"; echo "app-slug=${IN_SLUG}"; echo "source=input"; } >> "$GITHUB_OUTPUT"
+        fi

@@ -10,7 +10,7 @@ inputs:
     required: false
     default: ''
   app-private-key:
-    description: GitHub App private key for authentication (recommended over personal-access-token)
+    description: Fallback GitHub App private key, used only when Secret Manager can't be read (ISEC-853)
     required: false
     default: ''
   personal-access-token:
@@ -30,42 +30,23 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Generate GitHub App token
-      if: ${{ ((inputs.client-id != '' || inputs.app-id != '') && inputs.app-private-key != '') && inputs.client-id != '' }}
-      id: app-token-client
-      uses: actions/create-github-app-token@v3
+    - name: Mint the org App token
+      # ISEC-853: reads the key from Secret Manager when the job can mint an
+      # OIDC token on a push, dispatch or schedule; otherwise falls back to
+      # app-private-key while callers still pass it.
+      id: app-token
+      uses: two-inc/actions-public/app-token@main
       with:
         client-id: ${{ inputs.client-id }}
-        private-key: ${{ inputs.app-private-key }}
-        owner: two-inc
-        permission-contents: write
-        permission-pull-requests: write
-        permission-workflows: write
-        permission-members: read
-    - name: Generate GitHub App token (numeric app ID, deprecated)
-      if: ${{ ((inputs.client-id != '' || inputs.app-id != '') && inputs.app-private-key != '') && inputs.client-id == '' && inputs.app-id != '' }}
-      id: app-token-legacy
-      uses: actions/create-github-app-token@v3
-      with:
         app-id: ${{ inputs.app-id }}
-        private-key: ${{ inputs.app-private-key }}
+        app-private-key: ${{ inputs.app-private-key }}
         owner: two-inc
         permission-contents: write
         permission-pull-requests: write
         permission-workflows: write
         permission-members: read
-    - name: Use whichever GitHub App token was minted
-      if: ${{ (inputs.client-id != '' || inputs.app-id != '') && inputs.app-private-key != '' }}
-      id: app-token
-      shell: bash
-      env:
-        TOKEN: ${{ steps.app-token-client.outputs.token || steps.app-token-legacy.outputs.token }}
-        APP_SLUG: ${{ steps.app-token-client.outputs.app-slug || steps.app-token-legacy.outputs.app-slug }}
-      run: |
-        echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
-        echo "app-slug=$APP_SLUG" >> "$GITHUB_OUTPUT"
     - name: Get GitHub App User ID
-      if: (inputs.client-id != '' || inputs.app-id != '') && inputs.app-private-key != ''
+      if: steps.app-token.outputs.token != ''
       id: get-user-id
       shell: bash
       run: |
