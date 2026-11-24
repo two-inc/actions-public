@@ -42,7 +42,7 @@ jobs:
 
 ## Behaviour
 
-- Checks out the PR with full history (`fetch-depth: 0`) so pre-commit can diff against `origin/${{ github.base_ref }}`.
+- Checks out shallow: depth 2 on `pull_request` (GitHub's test merge commit plus its parents), depth 1 otherwise. On `pull_request` the hooks run on the files between the merge commit's first parent and the merge commit, which is the same set as `origin/<base>...HEAD` without downloading history. Any other event with a base ref (such as `pull_request_target`) fetches the base branch's full history first and diffs against `origin/<base>` as before. Events with no base ref run `--all-files`.
 - Installs `uv` with caching enabled, sets up Python.
 - Runs `uvx pre-commit run --from-ref ... --to-ref ...` against the PR diff. Pre-commit is installed in an ephemeral environment; it manages each hook's isolated environment itself.
 - Posts the result as a sticky PR comment identified by the `pre-commit` header marker — the comment is updated in place across pushes instead of deleted and recreated.

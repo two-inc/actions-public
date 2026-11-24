@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from pre_commit_action.run_hooks import git_auth_env, run_precommit
+from pre_commit_action.run_hooks import git_auth_env, resolve_from_ref, run_precommit
 
 
 def _mock_result(returncode, stdout):
@@ -32,16 +32,71 @@ def test_failure_returns_nonzero(tmp_path):
     assert output.read_text() == "Hook failed.\n"
 
 
-def test_command_includes_base_ref(tmp_path):
+def test_command_includes_from_ref(tmp_path):
     output = tmp_path / "out.txt"
     with patch(
         "pre_commit_action.run_hooks.subprocess.run",
         return_value=_mock_result(0, ""),
     ) as mock_run:
-        run_precommit("release", "HEAD", str(output))
+        run_precommit("HEAD^1", "HEAD", str(output))
     cmd = mock_run.call_args[0][0]
-    assert "origin/release" in cmd
+    assert cmd[cmd.index("--from-ref") + 1] == "HEAD^1"
+    assert cmd[cmd.index("--to-ref") + 1] == "HEAD"
     assert "--show-diff-on-failure" in cmd
+
+
+def _git(returncode=0, stdout=""):
+    r = MagicMock()
+    r.returncode = returncode
+    r.stdout = stdout
+    return r
+
+
+def test_resolve_from_ref_uses_merge_parent_on_pull_request():
+    with patch("pre_commit_action.run_hooks.subprocess.run", return_value=_git(0)) as mock_run:
+        assert resolve_from_ref("staging", "pull_request") == "HEAD^1"
+    # Only the HEAD^2 probe ran: nothing was fetched.
+    assert mock_run.call_count == 1
+    assert mock_run.call_args[0][0][:2] == ["git", "rev-parse"]
+
+
+def test_resolve_from_ref_fetches_base_when_head_is_not_a_merge():
+    calls = []
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(cmd)
+        if cmd[-1] == "HEAD^2":
+            return _git(1)
+        if "--is-shallow-repository" in cmd:
+            return _git(0, "true\n")
+        return _git(0)
+
+    with patch("pre_commit_action.run_hooks.subprocess.run", side_effect=fake_run):
+        assert resolve_from_ref("main", "pull_request") == "origin/main"
+    assert calls[-1] == [
+        "git", "fetch", "--no-tags", "--unshallow", "origin",
+        "+refs/heads/main:refs/remotes/origin/main",
+    ]
+
+
+def test_resolve_from_ref_ignores_merge_parent_outside_pull_request():
+    # pull_request_target checks out the base tip, which can itself be a merge
+    # commit; its first parent is not the PR's base.
+    calls = []
+
+    def fake_run(cmd, **_kwargs):
+        calls.append(cmd)
+        if "--is-shallow-repository" in cmd:
+            return _git(0, "false\n")
+        return _git(0)
+
+    with patch("pre_commit_action.run_hooks.subprocess.run", side_effect=fake_run):
+        assert resolve_from_ref("main", "pull_request_target") == "origin/main"
+    assert ["git", "rev-parse", "-q", "--verify", "HEAD^2"] not in calls
+    assert calls[-1] == [
+        "git", "fetch", "--no-tags", "origin",
+        "+refs/heads/main:refs/remotes/origin/main",
+    ]
 
 
 def test_command_empty_base_ref_uses_all_files(tmp_path):
