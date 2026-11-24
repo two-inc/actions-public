@@ -25,9 +25,13 @@ inputs:
 runs:
   using: composite
   steps:
+    # Shallow on purpose: full history cost a whole-repo download on every
+    # job that runs this action. Depth 2 on
+    # pull_request gives the test merge commit and both parents, which is all
+    # run_hooks needs to diff the PR (see resolve_from_ref).
     - uses: actions/checkout@v6
       with:
-        fetch-depth: 0
+        fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
 
     - uses: astral-sh/setup-uv@v7
       with:
