@@ -25,6 +25,11 @@ jobs:
     name: main → staging
     runs-on: ${{ vars.RUNNER_STANDARD }}
     if: github.ref_name == 'main'
+    # id-token lets app-token read the App key from Secret Manager instead of
+    # the TWO_INC_APP_PRIVATE_KEY org secret (ISEC-853).
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: two-inc/actions-public/back-merge@main
         with:
@@ -43,7 +48,7 @@ jobs:
 | `target-ref`            | yes      | Branch to merge into                                             |
 | `reviewer`              | yes      | Reviewer on the pull request opened when the branches conflict   |
 | `client-id`             | no       | GitHub App client ID; needed to push to a protected target       |
-| `app-private-key`       | no       | GitHub App private key                                           |
+| `app-private-key`       | no       | Fallback App key, used only when Secret Manager can't be read    |
 | `app-id`                | no       | Deprecated, use `client-id`                                      |
 | `personal-access-token` | no       | Deprecated, use the App inputs                                   |
 
