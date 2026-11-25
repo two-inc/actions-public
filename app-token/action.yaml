@@ -58,6 +58,10 @@ inputs:
     description: actions permission for the token
     required: false
     default: ''
+  permission-actions-variables:
+    description: actions_variables permission for the token (read or write)
+    required: false
+    default: ''
   permission-vulnerability-alerts:
     description: vulnerability-alerts permission for the token
     required: false
@@ -140,6 +144,9 @@ runs:
         permission-statuses: ${{ inputs.permission-statuses }}
         permission-actions: ${{ inputs.permission-actions }}
         permission-vulnerability-alerts: ${{ inputs.permission-vulnerability-alerts }}
+      env:
+        # v3 has no declared input for this, but reads any non-empty INPUT_PERMISSION-* variable.
+        INPUT_PERMISSION-ACTIONS-VARIABLES: ${{ inputs.permission-actions-variables }}
     - name: Mint the token (app-private-key input)
       id: input-token
       if: steps.sm-token.outputs.token == '' && inputs.client-id != '' && inputs.app-private-key != ''
@@ -158,6 +165,9 @@ runs:
         permission-statuses: ${{ inputs.permission-statuses }}
         permission-actions: ${{ inputs.permission-actions }}
         permission-vulnerability-alerts: ${{ inputs.permission-vulnerability-alerts }}
+      env:
+        # v3 has no declared input for this, but reads any non-empty INPUT_PERMISSION-* variable.
+        INPUT_PERMISSION-ACTIONS-VARIABLES: ${{ inputs.permission-actions-variables }}
     - name: Mint the token (numeric app ID, deprecated)
       id: legacy-token
       if: steps.sm-token.outputs.token == '' && inputs.client-id == '' && inputs.app-id != '' && inputs.app-private-key != ''
@@ -176,6 +186,9 @@ runs:
         permission-statuses: ${{ inputs.permission-statuses }}
         permission-actions: ${{ inputs.permission-actions }}
         permission-vulnerability-alerts: ${{ inputs.permission-vulnerability-alerts }}
+      env:
+        # v3 has no declared input for this, but reads any non-empty INPUT_PERMISSION-* variable.
+        INPUT_PERMISSION-ACTIONS-VARIABLES: ${{ inputs.permission-actions-variables }}
     - name: Report which App key source is used
       id: pick
       shell: bash
