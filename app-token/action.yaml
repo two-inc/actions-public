@@ -111,9 +111,11 @@ runs:
         ACCESS_TOKEN: ${{ steps.gcp.outputs.access_token }}
       run: |
         set -euo pipefail
+        # No jq: some callers run in a container image without it, such as
+        # static-analysis-whitelist, and would fall back to the org secret.
         key=$(curl -fsS --retry 3 -H "Authorization: Bearer ${ACCESS_TOKEN}" \
           "https://secretmanager.googleapis.com/v1/projects/two-artifacts/secrets/two-inc-app-private-key/versions/latest:access" \
-          | jq -r '.payload.data' | base64 -d)
+          | tr -d '\n' | sed -n 's/.*"data": *"\([^"]*\)".*/\1/p' | base64 -d)
         while IFS= read -r line; do
           [ -n "$line" ] && echo "::add-mask::${line}"
         done <<< "$key"
